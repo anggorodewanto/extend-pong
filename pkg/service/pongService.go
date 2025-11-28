@@ -16,9 +16,9 @@ import (
 
 const (
 	// PongHighScoreStatCode is the stat code for tracking pong high scores
-	PongHighScoreStatCode = "pong_high_score"
+	PongHighScoreStatCode = "pong-high-score"
 	// PongLeaderboardCode is the leaderboard code for pong rankings
-	PongLeaderboardCode = "pong_leaderboard"
+	PongLeaderboardCode = "pong-leaderboard"
 )
 
 type PongServiceServerImpl struct {

@@ -381,6 +381,6 @@ func TestGetLeaderboard_WithPagination(t *testing.T) {
 
 func TestConstants(t *testing.T) {
 	// Verify constants are defined correctly
-	assert.Equal(t, "pong_high_score", PongHighScoreStatCode)
-	assert.Equal(t, "pong_leaderboard", PongLeaderboardCode)
+	assert.Equal(t, "pong-high-score", PongHighScoreStatCode)
+	assert.Equal(t, "pong-leaderboard", PongLeaderboardCode)
 }
