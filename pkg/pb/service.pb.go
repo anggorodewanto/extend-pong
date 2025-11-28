@@ -27,28 +27,30 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type CreateOrUpdateGuildProgressRequest struct {
+// Request/Response messages for SubmitScore
+type SubmitScoreRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	GuildProgress *GuildProgress         `protobuf:"bytes,2,opt,name=guild_progress,json=guildProgress,proto3" json:"guild_progress,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Score         int32                  `protobuf:"varint,2,opt,name=score,proto3" json:"score,omitempty"`
+	Metadata      map[string]string      `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Optional: game duration, difficulty, etc.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateOrUpdateGuildProgressRequest) Reset() {
-	*x = CreateOrUpdateGuildProgressRequest{}
+func (x *SubmitScoreRequest) Reset() {
+	*x = SubmitScoreRequest{}
 	mi := &file_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateOrUpdateGuildProgressRequest) String() string {
+func (x *SubmitScoreRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateOrUpdateGuildProgressRequest) ProtoMessage() {}
+func (*SubmitScoreRequest) ProtoMessage() {}
 
-func (x *CreateOrUpdateGuildProgressRequest) ProtoReflect() protoreflect.Message {
+func (x *SubmitScoreRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -60,46 +62,54 @@ func (x *CreateOrUpdateGuildProgressRequest) ProtoReflect() protoreflect.Message
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateOrUpdateGuildProgressRequest.ProtoReflect.Descriptor instead.
-func (*CreateOrUpdateGuildProgressRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use SubmitScoreRequest.ProtoReflect.Descriptor instead.
+func (*SubmitScoreRequest) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *CreateOrUpdateGuildProgressRequest) GetNamespace() string {
+func (x *SubmitScoreRequest) GetUserId() string {
 	if x != nil {
-		return x.Namespace
+		return x.UserId
 	}
 	return ""
 }
 
-func (x *CreateOrUpdateGuildProgressRequest) GetGuildProgress() *GuildProgress {
+func (x *SubmitScoreRequest) GetScore() int32 {
 	if x != nil {
-		return x.GuildProgress
+		return x.Score
+	}
+	return 0
+}
+
+func (x *SubmitScoreRequest) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
 	}
 	return nil
 }
 
-type CreateOrUpdateGuildProgressResponse struct {
+type SubmitScoreResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	GuildProgress *GuildProgress         `protobuf:"bytes,1,opt,name=guild_progress,json=guildProgress,proto3" json:"guild_progress,omitempty"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateOrUpdateGuildProgressResponse) Reset() {
-	*x = CreateOrUpdateGuildProgressResponse{}
+func (x *SubmitScoreResponse) Reset() {
+	*x = SubmitScoreResponse{}
 	mi := &file_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateOrUpdateGuildProgressResponse) String() string {
+func (x *SubmitScoreResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateOrUpdateGuildProgressResponse) ProtoMessage() {}
+func (*SubmitScoreResponse) ProtoMessage() {}
 
-func (x *CreateOrUpdateGuildProgressResponse) ProtoReflect() protoreflect.Message {
+func (x *SubmitScoreResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -111,40 +121,48 @@ func (x *CreateOrUpdateGuildProgressResponse) ProtoReflect() protoreflect.Messag
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateOrUpdateGuildProgressResponse.ProtoReflect.Descriptor instead.
-func (*CreateOrUpdateGuildProgressResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use SubmitScoreResponse.ProtoReflect.Descriptor instead.
+func (*SubmitScoreResponse) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *CreateOrUpdateGuildProgressResponse) GetGuildProgress() *GuildProgress {
+func (x *SubmitScoreResponse) GetSuccess() bool {
 	if x != nil {
-		return x.GuildProgress
+		return x.Success
 	}
-	return nil
+	return false
 }
 
-type GetGuildProgressRequest struct {
+func (x *SubmitScoreResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// Request/Response messages for GetLeaderboard
+type GetLeaderboardRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	GuildId       string                 `protobuf:"bytes,2,opt,name=guild_id,json=guildId,proto3" json:"guild_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"` // Default: 10, Max: 100
+	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetGuildProgressRequest) Reset() {
-	*x = GetGuildProgressRequest{}
+func (x *GetLeaderboardRequest) Reset() {
+	*x = GetLeaderboardRequest{}
 	mi := &file_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetGuildProgressRequest) String() string {
+func (x *GetLeaderboardRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetGuildProgressRequest) ProtoMessage() {}
+func (*GetLeaderboardRequest) ProtoMessage() {}
 
-func (x *GetGuildProgressRequest) ProtoReflect() protoreflect.Message {
+func (x *GetLeaderboardRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -156,46 +174,50 @@ func (x *GetGuildProgressRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetGuildProgressRequest.ProtoReflect.Descriptor instead.
-func (*GetGuildProgressRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetLeaderboardRequest.ProtoReflect.Descriptor instead.
+func (*GetLeaderboardRequest) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *GetGuildProgressRequest) GetNamespace() string {
+func (x *GetLeaderboardRequest) GetLimit() int32 {
 	if x != nil {
-		return x.Namespace
+		return x.Limit
 	}
-	return ""
+	return 0
 }
 
-func (x *GetGuildProgressRequest) GetGuildId() string {
+func (x *GetLeaderboardRequest) GetOffset() int32 {
 	if x != nil {
-		return x.GuildId
+		return x.Offset
 	}
-	return ""
+	return 0
 }
 
-type GetGuildProgressResponse struct {
+type LeaderboardEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	GuildProgress *GuildProgress         `protobuf:"bytes,1,opt,name=guild_progress,json=guildProgress,proto3" json:"guild_progress,omitempty"`
+	Rank          int32                  `protobuf:"varint,1,opt,name=rank,proto3" json:"rank,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	DisplayName   string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Score         int32                  `protobuf:"varint,4,opt,name=score,proto3" json:"score,omitempty"`
+	Timestamp     int64                  `protobuf:"varint,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetGuildProgressResponse) Reset() {
-	*x = GetGuildProgressResponse{}
+func (x *LeaderboardEntry) Reset() {
+	*x = LeaderboardEntry{}
 	mi := &file_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetGuildProgressResponse) String() string {
+func (x *LeaderboardEntry) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetGuildProgressResponse) ProtoMessage() {}
+func (*LeaderboardEntry) ProtoMessage() {}
 
-func (x *GetGuildProgressResponse) ProtoReflect() protoreflect.Message {
+func (x *LeaderboardEntry) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -207,41 +229,68 @@ func (x *GetGuildProgressResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetGuildProgressResponse.ProtoReflect.Descriptor instead.
-func (*GetGuildProgressResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use LeaderboardEntry.ProtoReflect.Descriptor instead.
+func (*LeaderboardEntry) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *GetGuildProgressResponse) GetGuildProgress() *GuildProgress {
+func (x *LeaderboardEntry) GetRank() int32 {
 	if x != nil {
-		return x.GuildProgress
+		return x.Rank
 	}
-	return nil
+	return 0
 }
 
-type GuildProgress struct {
+func (x *LeaderboardEntry) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *LeaderboardEntry) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *LeaderboardEntry) GetScore() int32 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *LeaderboardEntry) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+type GetLeaderboardResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	GuildId       string                 `protobuf:"bytes,1,opt,name=guild_id,json=guildId,proto3" json:"guild_id,omitempty"`
-	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Objectives    map[string]int32       `protobuf:"bytes,3,rep,name=objectives,proto3" json:"objectives,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	Entries       []*LeaderboardEntry    `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	TotalCount    int32                  `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GuildProgress) Reset() {
-	*x = GuildProgress{}
+func (x *GetLeaderboardResponse) Reset() {
+	*x = GetLeaderboardResponse{}
 	mi := &file_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GuildProgress) String() string {
+func (x *GetLeaderboardResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GuildProgress) ProtoMessage() {}
+func (*GetLeaderboardResponse) ProtoMessage() {}
 
-func (x *GuildProgress) ProtoReflect() protoreflect.Message {
+func (x *GetLeaderboardResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -253,66 +302,60 @@ func (x *GuildProgress) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GuildProgress.ProtoReflect.Descriptor instead.
-func (*GuildProgress) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetLeaderboardResponse.ProtoReflect.Descriptor instead.
+func (*GetLeaderboardResponse) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *GuildProgress) GetGuildId() string {
+func (x *GetLeaderboardResponse) GetEntries() []*LeaderboardEntry {
 	if x != nil {
-		return x.GuildId
-	}
-	return ""
-}
-
-func (x *GuildProgress) GetNamespace() string {
-	if x != nil {
-		return x.Namespace
-	}
-	return ""
-}
-
-func (x *GuildProgress) GetObjectives() map[string]int32 {
-	if x != nil {
-		return x.Objectives
+		return x.Entries
 	}
 	return nil
+}
+
+func (x *GetLeaderboardResponse) GetTotalCount() int32 {
+	if x != nil {
+		return x.TotalCount
+	}
+	return 0
 }
 
 var File_service_proto protoreflect.FileDescriptor
 
 const file_service_proto_rawDesc = "" +
 	"\n" +
-	"\rservice.proto\x12\aservice\x1a\x1cgoogle/api/annotations.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x10permission.proto\"\x81\x01\n" +
-	"\"CreateOrUpdateGuildProgressRequest\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12=\n" +
-	"\x0eguild_progress\x18\x02 \x01(\v2\x16.service.GuildProgressR\rguildProgress\"d\n" +
-	"#CreateOrUpdateGuildProgressResponse\x12=\n" +
-	"\x0eguild_progress\x18\x01 \x01(\v2\x16.service.GuildProgressR\rguildProgress\"R\n" +
-	"\x17GetGuildProgressRequest\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x19\n" +
-	"\bguild_id\x18\x02 \x01(\tR\aguildId\"Y\n" +
-	"\x18GetGuildProgressResponse\x12=\n" +
-	"\x0eguild_progress\x18\x01 \x01(\v2\x16.service.GuildProgressR\rguildProgress\"\xcf\x01\n" +
-	"\rGuildProgress\x12\x19\n" +
-	"\bguild_id\x18\x01 \x01(\tR\aguildId\x12\x1c\n" +
-	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12F\n" +
-	"\n" +
-	"objectives\x18\x03 \x03(\v2&.service.GuildProgress.ObjectivesEntryR\n" +
-	"objectives\x1a=\n" +
-	"\x0fObjectivesEntry\x12\x10\n" +
+	"\rservice.proto\x12\aservice\x1a\x1cgoogle/api/annotations.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x10permission.proto\"\xc7\x01\n" +
+	"\x12SubmitScoreRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
+	"\x05score\x18\x02 \x01(\x05R\x05score\x12E\n" +
+	"\bmetadata\x18\x03 \x03(\v2).service.SubmitScoreRequest.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x012\xe7\x04\n" +
-	"\aService\x12\xd0\x02\n" +
-	"\x1bCreateOrUpdateGuildProgress\x12+.service.CreateOrUpdateGuildProgressRequest\x1a,.service.CreateOrUpdateGuildProgressResponse\"\xd5\x01\x92Ak\x12\x18Update Guild progression\x1aAUpdate Guild progression if not existed yet will create a new oneb\f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"I\n" +
+	"\x13SubmitScoreResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"E\n" +
+	"\x15GetLeaderboardRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset\"\x96\x01\n" +
+	"\x10LeaderboardEntry\x12\x12\n" +
+	"\x04rank\x18\x01 \x01(\x05R\x04rank\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x14\n" +
+	"\x05score\x18\x04 \x01(\x05R\x05score\x12\x1c\n" +
+	"\ttimestamp\x18\x05 \x01(\x03R\ttimestamp\"n\n" +
+	"\x16GetLeaderboardResponse\x123\n" +
+	"\aentries\x18\x01 \x03(\v2\x19.service.LeaderboardEntryR\aentries\x12\x1f\n" +
+	"\vtotal_count\x18\x02 \x01(\x05R\n" +
+	"totalCount2\xef\x03\n" +
+	"\vPongService\x12\xf8\x01\n" +
+	"\vSubmitScore\x12\x1b.service.SubmitScoreRequest\x1a\x1c.service.SubmitScoreResponse\"\xad\x01\x92AX\x12\fSubmit score\x1a:Submit player's score to update statistics and leaderboardb\f\n" +
 	"\n" +
 	"\n" +
-	"\x06Bearer\x12\x00\x8a\xb5\x18,ADMIN:NAMESPACE:{namespace}:CLOUDSAVE:RECORD\x90\xb5\x18\x01\x82\xd3\xe4\x93\x02-:\x01*\"(/v1/admin/namespace/{namespace}/progress\x12\x88\x02\n" +
-	"\x10GetGuildProgress\x12 .service.GetGuildProgressRequest\x1a!.service.GetGuildProgressResponse\"\xae\x01\x92A<\x12\x15Get guild progression\x1a\x15Get guild progressionb\f\n" +
-	"\n" +
-	"\n" +
-	"\x06Bearer\x12\x00\x8a\xb5\x18,ADMIN:NAMESPACE:{namespace}:CLOUDSAVE:RECORD\x90\xb5\x18\x02\x82\xd3\xe4\x93\x025\x123/v1/admin/namespace/{namespace}/progress/{guild_id}B\xb6\x01\x92A?\x12\x12\n" +
-	"\vService API2\x031.0\"\b/serviceZ\x1f\n" +
+	"\x06Bearer\x12\x00\x8a\xb5\x18.NAMESPACE:{namespace}:USER:{user_id}:STATISTIC\x90\xb5\x18\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/public/scores\x12\xe4\x01\n" +
+	"\x0eGetLeaderboard\x12\x1e.service.GetLeaderboardRequest\x1a\x1f.service.GetLeaderboardResponse\"\x90\x01\x92AF\x12\x0fGet leaderboard\x1a3Get top scores from the leaderboard (public access)\x8a\xb5\x18!NAMESPACE:{namespace}:LEADERBOARD\x90\xb5\x18\x02\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/leaderboardB\xb5\x01\x92A>\x12\x14\n" +
+	"\rPong Game API2\x031.0\"\x05/pongZ\x1f\n" +
 	"\x1d\n" +
 	"\x06Bearer\x12\x13\b\x02\x1a\rAuthorization \x02\n" +
 	"%net.accelbyte.extend.serviceextensionP\x01Z%accelbyte.net/extend/serviceextension\xaa\x02!AccelByte.Extend.ServiceExtensionb\x06proto3"
@@ -331,27 +374,25 @@ func file_service_proto_rawDescGZIP() []byte {
 
 var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_service_proto_goTypes = []any{
-	(*CreateOrUpdateGuildProgressRequest)(nil),  // 0: service.CreateOrUpdateGuildProgressRequest
-	(*CreateOrUpdateGuildProgressResponse)(nil), // 1: service.CreateOrUpdateGuildProgressResponse
-	(*GetGuildProgressRequest)(nil),             // 2: service.GetGuildProgressRequest
-	(*GetGuildProgressResponse)(nil),            // 3: service.GetGuildProgressResponse
-	(*GuildProgress)(nil),                       // 4: service.GuildProgress
-	nil,                                         // 5: service.GuildProgress.ObjectivesEntry
+	(*SubmitScoreRequest)(nil),     // 0: service.SubmitScoreRequest
+	(*SubmitScoreResponse)(nil),    // 1: service.SubmitScoreResponse
+	(*GetLeaderboardRequest)(nil),  // 2: service.GetLeaderboardRequest
+	(*LeaderboardEntry)(nil),       // 3: service.LeaderboardEntry
+	(*GetLeaderboardResponse)(nil), // 4: service.GetLeaderboardResponse
+	nil,                            // 5: service.SubmitScoreRequest.MetadataEntry
 }
 var file_service_proto_depIdxs = []int32{
-	4, // 0: service.CreateOrUpdateGuildProgressRequest.guild_progress:type_name -> service.GuildProgress
-	4, // 1: service.CreateOrUpdateGuildProgressResponse.guild_progress:type_name -> service.GuildProgress
-	4, // 2: service.GetGuildProgressResponse.guild_progress:type_name -> service.GuildProgress
-	5, // 3: service.GuildProgress.objectives:type_name -> service.GuildProgress.ObjectivesEntry
-	0, // 4: service.Service.CreateOrUpdateGuildProgress:input_type -> service.CreateOrUpdateGuildProgressRequest
-	2, // 5: service.Service.GetGuildProgress:input_type -> service.GetGuildProgressRequest
-	1, // 6: service.Service.CreateOrUpdateGuildProgress:output_type -> service.CreateOrUpdateGuildProgressResponse
-	3, // 7: service.Service.GetGuildProgress:output_type -> service.GetGuildProgressResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	5, // 0: service.SubmitScoreRequest.metadata:type_name -> service.SubmitScoreRequest.MetadataEntry
+	3, // 1: service.GetLeaderboardResponse.entries:type_name -> service.LeaderboardEntry
+	0, // 2: service.PongService.SubmitScore:input_type -> service.SubmitScoreRequest
+	2, // 3: service.PongService.GetLeaderboard:input_type -> service.GetLeaderboardRequest
+	1, // 4: service.PongService.SubmitScore:output_type -> service.SubmitScoreResponse
+	4, // 5: service.PongService.GetLeaderboard:output_type -> service.GetLeaderboardResponse
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_service_proto_init() }

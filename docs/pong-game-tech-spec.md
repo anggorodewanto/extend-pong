@@ -28,6 +28,12 @@ flowchart LR
     SV -->|SDK| LB
 ```
 
+### Service Base Path
+
+The service is configured with a base path of `/pong`. All REST API endpoints and static files are served under this path:
+- Static files: `/pong/` (game UI)
+- REST API: `/pong/v1/public/namespace/{namespace}/...`
+
 ## System Components
 
 ### 1. Frontend (Browser-based Pong Game)

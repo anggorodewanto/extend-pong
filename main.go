@@ -9,7 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"extend-custom-guild-service/pkg/service"
-	"extend-custom-guild-service/pkg/storage"
+	"extend-custom-guild-service/pkg/service/ags"
 	"fmt"
 	"log"
 	"net"
@@ -22,8 +22,6 @@ import (
 	"time"
 
 	"github.com/go-openapi/loads"
-
-	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/service/cloudsave"
 
 	"extend-custom-guild-service/pkg/common"
 
@@ -117,7 +115,7 @@ func main() {
 		common.Validator = common.NewTokenValidator(oauthService, time.Duration(refreshInterval)*time.Second, true)
 		err := common.Validator.Initialize(ctx)
 		if err != nil {
-			logrus.Infof(err.Error())
+			logrus.Infof("validator initialization error: %v", err)
 		}
 
 		unaryServerInterceptor := common.NewUnaryAuthServerIntercept()
@@ -143,17 +141,27 @@ func main() {
 		logrus.Fatalf("Error unable to login using clientId and clientSecret: %v", err)
 	}
 
-	// Initialize the AccelByte CloudSave service
-	adminGameRecordService := cloudsave.AdminGameRecordService{
-		Client:          factory.NewCloudsaveClient(configRepo),
-		TokenRepository: tokenRepo,
+	// Initialize AGS services (real or mock based on env var)
+	var statisticsService ags.StatisticsService
+	var leaderboardService ags.LeaderboardService
+
+	namespace := common.GetEnv("AB_NAMESPACE", "accelbyte")
+
+	if strings.ToLower(common.GetEnv("AGS_MOCK_ENABLED", "false")) == "true" {
+		logrus.Info("Using MOCK AGS services")
+		linkedMocks := ags.NewLinkedMockServices(namespace, service.PongHighScoreStatCode, service.PongLeaderboardCode)
+		linkedMocks.SeedSampleData()
+		statisticsService = linkedMocks
+		leaderboardService = linkedMocks.Leaderboard
+	} else {
+		logrus.Info("Using REAL AGS services")
+		statisticsService = ags.NewAGSStatisticsService(configRepo, tokenRepo)
+		leaderboardService = ags.NewAGSLeaderboardService(configRepo, tokenRepo)
 	}
 
-	cloudSaveStorage := storage.NewCloudSaveStorage(&adminGameRecordService)
-
-	// Register Guild Service
-	myServiceServer := service.NewMyServiceServer(tokenRepo, configRepo, refreshRepo, cloudSaveStorage)
-	pb.RegisterServiceServer(s, myServiceServer)
+	// Register Pong Service
+	pongServiceServer := service.NewPongServiceServer(namespace, statisticsService, leaderboardService)
+	pb.RegisterPongServiceServer(s, pongServiceServer)
 
 	// Enable gRPC Reflection
 	reflection.Register(s)
@@ -240,17 +248,19 @@ func main() {
 }
 
 func newGRPCGatewayHTTPServer(
-	addr string, handler http.Handler, logger *logrus.Logger, swaggerDir string,
+	addr string, grpcGateway http.Handler, logger *logrus.Logger, swaggerDir string,
 ) *http.Server {
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 
-	// Add the gRPC-Gateway handler
-	mux.Handle("/", handler)
-
 	// Serve Swagger UI and JSON
 	serveSwaggerUI(mux)
 	serveSwaggerJSON(mux, swaggerDir)
+
+	// Create combined handler for API and static files
+	staticHandler := createStaticHandler()
+	combinedHandler := createCombinedHandler(grpcGateway, staticHandler)
+	mux.Handle("/", combinedHandler)
 
 	// Add logging middleware
 	loggedMux := loggingMiddleware(logger, mux)
@@ -326,4 +336,44 @@ func serveSwaggerJSON(mux *http.ServeMux, swaggerDir string) {
 	})
 	apidocsPath := fmt.Sprintf("%s/apidocs/api.json", basePath)
 	mux.Handle(apidocsPath, fileHandler)
+}
+
+func createStaticHandler() http.Handler {
+	staticDir := common.GetEnv("STATIC_FILES_PATH", "./static")
+
+	// Check if static directory exists
+	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
+		logrus.Warnf("Static files directory '%s' does not exist", staticDir)
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
+	}
+
+	logrus.Infof("Static files will be served from '%s' at path '%s/'", staticDir, basePath)
+
+	return http.StripPrefix(basePath, http.FileServer(http.Dir(staticDir)))
+}
+
+func createCombinedHandler(grpcGateway http.Handler, staticHandler http.Handler) http.Handler {
+	apiPrefix := basePath + "/v1/"
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Route API requests to gRPC gateway
+		if strings.HasPrefix(r.URL.Path, apiPrefix) {
+			grpcGateway.ServeHTTP(w, r)
+
+			return
+		}
+
+		// Route requests under basePath to static files
+		if strings.HasPrefix(r.URL.Path, basePath+"/") || r.URL.Path == basePath {
+			staticHandler.ServeHTTP(w, r)
+
+			return
+		}
+
+		// Everything else goes to gRPC gateway (for potential other routes)
+		grpcGateway.ServeHTTP(w, r)
+	})
 }

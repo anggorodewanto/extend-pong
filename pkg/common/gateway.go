@@ -24,7 +24,7 @@ type Gateway struct {
 func NewGateway(ctx context.Context, grpcServerEndpoint string, basePath string) (*Gateway, error) {
 	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	err := pb.RegisterServiceHandlerFromEndpoint(ctx, mux, grpcServerEndpoint, opts)
+	err := pb.RegisterPongServiceHandlerFromEndpoint(ctx, mux, grpcServerEndpoint, opts)
 	if err != nil {
 		return nil, err
 	}

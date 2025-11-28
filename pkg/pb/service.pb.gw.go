@@ -35,11 +35,10 @@ var (
 	_ = metadata.Join
 )
 
-func request_Service_CreateOrUpdateGuildProgress_0(ctx context.Context, marshaler runtime.Marshaler, client ServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func request_PongService_SubmitScore_0(ctx context.Context, marshaler runtime.Marshaler, client PongServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq CreateOrUpdateGuildProgressRequest
+		protoReq SubmitScoreRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -47,147 +46,110 @@ func request_Service_CreateOrUpdateGuildProgress_0(ctx context.Context, marshale
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["namespace"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "namespace")
-	}
-	protoReq.Namespace, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "namespace", err)
-	}
-	msg, err := client.CreateOrUpdateGuildProgress(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.SubmitScore(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
-func local_request_Service_CreateOrUpdateGuildProgress_0(ctx context.Context, marshaler runtime.Marshaler, server ServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_PongService_SubmitScore_0(ctx context.Context, marshaler runtime.Marshaler, server PongServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq CreateOrUpdateGuildProgressRequest
+		protoReq SubmitScoreRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	val, ok := pathParams["namespace"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "namespace")
-	}
-	protoReq.Namespace, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "namespace", err)
-	}
-	msg, err := server.CreateOrUpdateGuildProgress(ctx, &protoReq)
+	msg, err := server.SubmitScore(ctx, &protoReq)
 	return msg, metadata, err
 }
 
-func request_Service_GetGuildProgress_0(ctx context.Context, marshaler runtime.Marshaler, client ServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+var filter_PongService_GetLeaderboard_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+
+func request_PongService_GetLeaderboard_0(ctx context.Context, marshaler runtime.Marshaler, client PongServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq GetGuildProgressRequest
+		protoReq GetLeaderboardRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["namespace"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "namespace")
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	protoReq.Namespace, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "namespace", err)
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_PongService_GetLeaderboard_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	val, ok = pathParams["guild_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guild_id")
-	}
-	protoReq.GuildId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guild_id", err)
-	}
-	msg, err := client.GetGuildProgress(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	msg, err := client.GetLeaderboard(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
 
-func local_request_Service_GetGuildProgress_0(ctx context.Context, marshaler runtime.Marshaler, server ServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+func local_request_PongService_GetLeaderboard_0(ctx context.Context, marshaler runtime.Marshaler, server PongServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq GetGuildProgressRequest
+		protoReq GetLeaderboardRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
-	val, ok := pathParams["namespace"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "namespace")
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	protoReq.Namespace, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "namespace", err)
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_PongService_GetLeaderboard_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	val, ok = pathParams["guild_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "guild_id")
-	}
-	protoReq.GuildId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "guild_id", err)
-	}
-	msg, err := server.GetGuildProgress(ctx, &protoReq)
+	msg, err := server.GetLeaderboard(ctx, &protoReq)
 	return msg, metadata, err
 }
 
-// RegisterServiceHandlerServer registers the http handlers for service Service to "mux".
-// UnaryRPC     :call ServiceServer directly.
+// RegisterPongServiceHandlerServer registers the http handlers for service PongService to "mux".
+// UnaryRPC     :call PongServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
-// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterServiceHandlerFromEndpoint instead.
+// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterPongServiceHandlerFromEndpoint instead.
 // GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
-func RegisterServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server ServiceServer) error {
-	mux.Handle(http.MethodPost, pattern_Service_CreateOrUpdateGuildProgress_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+func RegisterPongServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server PongServiceServer) error {
+	mux.Handle(http.MethodPost, pattern_PongService_SubmitScore_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/service.Service/CreateOrUpdateGuildProgress", runtime.WithHTTPPathPattern("/v1/admin/namespace/{namespace}/progress"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/service.PongService/SubmitScore", runtime.WithHTTPPathPattern("/v1/public/scores"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_Service_CreateOrUpdateGuildProgress_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_PongService_SubmitScore_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_Service_CreateOrUpdateGuildProgress_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_PongService_SubmitScore_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_Service_GetGuildProgress_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_PongService_GetLeaderboard_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/service.Service/GetGuildProgress", runtime.WithHTTPPathPattern("/v1/admin/namespace/{namespace}/progress/{guild_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/service.PongService/GetLeaderboard", runtime.WithHTTPPathPattern("/v1/public/leaderboard"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := local_request_Service_GetGuildProgress_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		resp, md, err := local_request_PongService_GetLeaderboard_0(annotatedContext, inboundMarshaler, server, req, pathParams)
 		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_Service_GetGuildProgress_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_PongService_GetLeaderboard_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
 }
 
-// RegisterServiceHandlerFromEndpoint is same as RegisterServiceHandler but
+// RegisterPongServiceHandlerFromEndpoint is same as RegisterPongServiceHandler but
 // automatically dials to "endpoint" and closes the connection when "ctx" gets done.
-func RegisterServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
+func RegisterPongServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
 	conn, err := grpc.NewClient(endpoint, opts...)
 	if err != nil {
 		return err
@@ -206,64 +168,64 @@ func RegisterServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeM
 			}
 		}()
 	}()
-	return RegisterServiceHandler(ctx, mux, conn)
+	return RegisterPongServiceHandler(ctx, mux, conn)
 }
 
-// RegisterServiceHandler registers the http handlers for service Service to "mux".
+// RegisterPongServiceHandler registers the http handlers for service PongService to "mux".
 // The handlers forward requests to the grpc endpoint over "conn".
-func RegisterServiceHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
-	return RegisterServiceHandlerClient(ctx, mux, NewServiceClient(conn))
+func RegisterPongServiceHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+	return RegisterPongServiceHandlerClient(ctx, mux, NewPongServiceClient(conn))
 }
 
-// RegisterServiceHandlerClient registers the http handlers for service Service
-// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "ServiceClient".
-// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "ServiceClient"
+// RegisterPongServiceHandlerClient registers the http handlers for service PongService
+// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "PongServiceClient".
+// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "PongServiceClient"
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
-// "ServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
-func RegisterServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client ServiceClient) error {
-	mux.Handle(http.MethodPost, pattern_Service_CreateOrUpdateGuildProgress_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+// "PongServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
+func RegisterPongServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client PongServiceClient) error {
+	mux.Handle(http.MethodPost, pattern_PongService_SubmitScore_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/service.Service/CreateOrUpdateGuildProgress", runtime.WithHTTPPathPattern("/v1/admin/namespace/{namespace}/progress"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/service.PongService/SubmitScore", runtime.WithHTTPPathPattern("/v1/public/scores"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_Service_CreateOrUpdateGuildProgress_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_PongService_SubmitScore_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_Service_CreateOrUpdateGuildProgress_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_PongService_SubmitScore_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_Service_GetGuildProgress_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_PongService_GetLeaderboard_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/service.Service/GetGuildProgress", runtime.WithHTTPPathPattern("/v1/admin/namespace/{namespace}/progress/{guild_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/service.PongService/GetLeaderboard", runtime.WithHTTPPathPattern("/v1/public/leaderboard"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_Service_GetGuildProgress_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_PongService_GetLeaderboard_0(annotatedContext, inboundMarshaler, client, req, pathParams)
 		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
 		if err != nil {
 			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		forward_Service_GetGuildProgress_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+		forward_PongService_GetLeaderboard_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	return nil
 }
 
 var (
-	pattern_Service_CreateOrUpdateGuildProgress_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "admin", "namespace", "progress"}, ""))
-	pattern_Service_GetGuildProgress_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"v1", "admin", "namespace", "progress", "guild_id"}, ""))
+	pattern_PongService_SubmitScore_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "public", "scores"}, ""))
+	pattern_PongService_GetLeaderboard_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "public", "leaderboard"}, ""))
 )
 
 var (
-	forward_Service_CreateOrUpdateGuildProgress_0 = runtime.ForwardResponseMessage
-	forward_Service_GetGuildProgress_0            = runtime.ForwardResponseMessage
+	forward_PongService_SubmitScore_0    = runtime.ForwardResponseMessage
+	forward_PongService_GetLeaderboard_0 = runtime.ForwardResponseMessage
 )

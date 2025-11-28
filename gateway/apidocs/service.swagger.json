@@ -1,15 +1,15 @@
 {
   "swagger": "2.0",
   "info": {
-    "title": "Service API",
+    "title": "Pong Game API",
     "version": "1.0"
   },
   "tags": [
     {
-      "name": "Service"
+      "name": "PongService"
     }
   ],
-  "basePath": "/service",
+  "basePath": "/pong",
   "consumes": [
     "application/json"
   ],
@@ -17,16 +17,16 @@
     "application/json"
   ],
   "paths": {
-    "/v1/admin/namespace/{namespace}/progress": {
-      "post": {
-        "summary": "Update Guild progression",
-        "description": "Update Guild progression if not existed yet will create a new one",
-        "operationId": "Service_CreateOrUpdateGuildProgress",
+    "/v1/public/leaderboard": {
+      "get": {
+        "summary": "Get leaderboard",
+        "description": "Get top scores from the leaderboard (public access)",
+        "operationId": "PongService_GetLeaderboard",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/serviceCreateOrUpdateGuildProgressResponse"
+              "$ref": "#/definitions/serviceGetLeaderboardResponse"
             }
           },
           "default": {
@@ -38,65 +38,57 @@
         },
         "parameters": [
           {
-            "name": "namespace",
-            "in": "path",
-            "required": true,
-            "type": "string"
+            "name": "limit",
+            "description": "Default: 10, Max: 100",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
           },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "PongService"
+        ]
+      }
+    },
+    "/v1/public/scores": {
+      "post": {
+        "summary": "Submit score",
+        "description": "Submit player's score to update statistics and leaderboard",
+        "operationId": "PongService_SubmitScore",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/serviceSubmitScoreResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
           {
             "name": "body",
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/ServiceCreateOrUpdateGuildProgressBody"
+              "$ref": "#/definitions/serviceSubmitScoreRequest"
             }
           }
         ],
         "tags": [
-          "Service"
-        ],
-        "security": [
-          {
-            "Bearer": []
-          }
-        ]
-      }
-    },
-    "/v1/admin/namespace/{namespace}/progress/{guildId}": {
-      "get": {
-        "summary": "Get guild progression",
-        "description": "Get guild progression",
-        "operationId": "Service_GetGuildProgress",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/serviceGetGuildProgressResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "namespace",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "guildId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "Service"
+          "PongService"
         ],
         "security": [
           {
@@ -107,14 +99,6 @@
     }
   },
   "definitions": {
-    "ServiceCreateOrUpdateGuildProgressBody": {
-      "type": "object",
-      "properties": {
-        "guildProgress": {
-          "$ref": "#/definitions/serviceGuildProgress"
-        }
-      }
-    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -143,37 +127,73 @@
         }
       }
     },
-    "serviceCreateOrUpdateGuildProgressResponse": {
+    "serviceGetLeaderboardResponse": {
       "type": "object",
       "properties": {
-        "guildProgress": {
-          "$ref": "#/definitions/serviceGuildProgress"
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/serviceLeaderboardEntry"
+          }
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int32"
         }
       }
     },
-    "serviceGetGuildProgressResponse": {
+    "serviceLeaderboardEntry": {
       "type": "object",
       "properties": {
-        "guildProgress": {
-          "$ref": "#/definitions/serviceGuildProgress"
+        "rank": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "score": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "int64"
         }
       }
     },
-    "serviceGuildProgress": {
+    "serviceSubmitScoreRequest": {
       "type": "object",
       "properties": {
-        "guildId": {
+        "userId": {
           "type": "string"
         },
-        "namespace": {
-          "type": "string"
+        "score": {
+          "type": "integer",
+          "format": "int32"
         },
-        "objectives": {
+        "metadata": {
           "type": "object",
           "additionalProperties": {
-            "type": "integer",
-            "format": "int32"
-          }
+            "type": "string"
+          },
+          "description": "Optional: game duration, difficulty, etc."
+        }
+      },
+      "title": "Request/Response messages for SubmitScore"
+    },
+    "serviceSubmitScoreResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
         }
       }
     }
