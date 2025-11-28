@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pong - AGS Demo Game</title>
+  <link rel="stylesheet" href="css/pong.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1>PONG</h1>
+    <p class="subtitle">AccelByte Gaming Services Demo</p>
+  </header>
+
+  <!-- Main Game Container -->
+  <main class="game-container">
+    <!-- Game Panel -->
+    <section class="game-panel">
+      <!-- Canvas -->
+      <div class="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+      </div>
+
+      <!-- Score Display -->
+      <div class="score-display">
+        <div class="score-item">
+          <div class="label">You</div>
+          <div class="value" id="playerScore">0</div>
+        </div>
+        <div class="score-item">
+          <div class="label">CPU</div>
+          <div class="value" id="aiScore">0</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="btn btn-primary" id="startBtn">Start Game</button>
+        <button class="btn btn-secondary" id="pauseBtn" disabled>Pause</button>
+      </div>
+    </section>
+
+    <!-- Side Panel -->
+    <aside class="side-panel">
+      <!-- User Info -->
+      <div class="card">
+        <h2>Player</h2>
+        <div class="user-info">
+          <div class="user-status">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span class="user-name" id="userName">Not logged in</span>
+          </div>
+          <div class="user-id-container">
+            <div class="user-id" id="userId"></div>
+            <button class="btn-copy" id="copyUserIdBtn" title="Copy User ID" style="display: none;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <button class="btn btn-secondary login-btn" id="loginBtn">Login</button>
+        </div>
+      </div>
+
+      <!-- Leaderboard -->
+      <div class="card">
+        <h2>Leaderboard</h2>
+        <div id="leaderboardContainer">
+          <div class="leaderboard-loading">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="refreshLeaderboardBtn" style="width: 100%; margin-top: 12px;">
+          Refresh
+        </button>
+      </div>
+
+      <!-- Instructions -->
+      <div class="card instructions">
+        <h3>How to Play</h3>
+        <ul>
+          <li><span class="key">W / S</span> Move paddle</li>
+          <li><span class="key">Space</span> Start / Pause</li>
+          <li><span class="key">Esc</span> Pause game</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Game Over Modal -->
+  <div class="modal-overlay" id="gameOverModal">
+    <div class="modal" id="modalContent">
+      <h2 id="modalTitle">Game Over</h2>
+      <div class="final-score" id="modalScore">0 - 0</div>
+      <p class="message" id="modalMessage">Your score has been submitted!</p>
+      <div class="actions">
+        <button class="btn btn-primary" id="playAgainBtn">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>Powered by <a href="https://accelbyte.io" target="_blank">AccelByte Gaming Services</a></p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/game.js"></script>
+  <script>
+    // Main application controller
+    (function() {
+      'use strict';
+
+      // DOM Elements
+      const elements = {
+        playerScore: document.getElementById('playerScore'),
+        aiScore: document.getElementById('aiScore'),
+        startBtn: document.getElementById('startBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        loginBtn: document.getElementById('loginBtn'),
+        statusIndicator: document.getElementById('statusIndicator'),
+        userName: document.getElementById('userName'),
+        userId: document.getElementById('userId'),
+        copyUserIdBtn: document.getElementById('copyUserIdBtn'),
+        leaderboardContainer: document.getElementById('leaderboardContainer'),
+        refreshLeaderboardBtn: document.getElementById('refreshLeaderboardBtn'),
+        gameOverModal: document.getElementById('gameOverModal'),
+        modalContent: document.getElementById('modalContent'),
+        modalTitle: document.getElementById('modalTitle'),
+        modalScore: document.getElementById('modalScore'),
+        modalMessage: document.getElementById('modalMessage'),
+        playAgainBtn: document.getElementById('playAgainBtn'),
+        toastContainer: document.getElementById('toastContainer')
+      };
+
+      // Initialize game
+      const game = new PongGame('gameCanvas');
+      let isSubmittingScore = false;
+
+      // Toast notification system
+      function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        elements.toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.animation = 'slideIn 0.3s ease reverse';
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      }
+
+      // Update UI based on login state
+      function updateUserUI() {
+        const userInfo = pongAPI.getUserInfo();
+
+        if (userInfo.isLoggedIn) {
+          elements.statusIndicator.classList.add('online');
+          elements.userName.textContent = userInfo.displayName || 'Player';
+          elements.userId.textContent = `ID: ${userInfo.userId}`;
+          elements.copyUserIdBtn.style.display = 'flex';
+          elements.loginBtn.textContent = 'Logged In';
+          elements.loginBtn.disabled = true;
+        } else {
+          elements.statusIndicator.classList.remove('online');
+          elements.userName.textContent = 'Not logged in';
+          elements.userId.textContent = '';
+          elements.copyUserIdBtn.style.display = 'none';
+          elements.loginBtn.textContent = 'Login';
+          elements.loginBtn.disabled = false;
+        }
+      }
+
+      // Render leaderboard
+      function renderLeaderboard(data) {
+        if (!data || !data.entries || data.entries.length === 0) {
+          elements.leaderboardContainer.innerHTML = `
+            <div class="leaderboard-empty">
+              <p>No scores yet. Be the first!</p>
+            </div>
+          `;
+          return;
+        }
+
+        const userInfo = pongAPI.getUserInfo();
+        const html = `
+          <ul class="leaderboard-list">
+            ${data.entries.map((entry, index) => {
+              const isCurrentUser = userInfo.userId === entry.user_id;
+              const rankClass = index < 3 ? `top-${index + 1}` : '';
+              return `
+                <li class="leaderboard-item ${isCurrentUser ? 'current-user' : ''}">
+                  <span class="rank ${rankClass}">${entry.rank || index + 1}</span>
+                  <div class="player-info">
+                    <div class="player-name">${entry.display_name || `Player_${entry.user_id.substring(0, 6)}`}</div>
+                  </div>
+                  <span class="player-score">${entry.score}</span>
+                </li>
+              `;
+            }).join('')}
+          </ul>
+        `;
+        elements.leaderboardContainer.innerHTML = html;
+      }
+
+      // Fetch and display leaderboard
+      async function loadLeaderboard() {
+        elements.leaderboardContainer.innerHTML = `
+          <div class="leaderboard-loading">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+          </div>
+        `;
+
+        try {
+          const data = await pongAPI.getLeaderboard();
+          renderLeaderboard(data);
+        } catch (error) {
+          console.error('Failed to load leaderboard:', error);
+          elements.leaderboardContainer.innerHTML = `
+            <div class="leaderboard-error">
+              <p>Failed to load leaderboard</p>
+            </div>
+          `;
+        }
+      }
+
+      // Handle login
+      async function handleLogin() {
+        elements.loginBtn.disabled = true;
+        elements.loginBtn.textContent = 'Logging in...';
+
+        try {
+          await pongAPI.headlessLogin();
+          updateUserUI();
+          showToast('Logged in successfully!', 'success');
+          loadLeaderboard(); // Refresh to highlight user
+        } catch (error) {
+          console.error('Login failed:', error);
+          showToast(`Login failed: ${error.message}`, 'error');
+          elements.loginBtn.disabled = false;
+          elements.loginBtn.textContent = 'Login';
+        }
+      }
+
+      // Submit score
+      async function submitScore(playerScore, duration) {
+        if (isSubmittingScore) return;
+        if (!pongAPI.isLoggedIn()) {
+          showToast('Login to save your score!', 'info');
+          return;
+        }
+
+        isSubmittingScore = true;
+        elements.modalMessage.textContent = 'Submitting score...';
+
+        try {
+          await pongAPI.submitScore(playerScore, {
+            game_duration: duration.toString(),
+            difficulty: CONFIG.AI_DIFFICULTY.toString()
+          });
+          elements.modalMessage.textContent = 'Score submitted!';
+          showToast('Score saved!', 'success');
+          loadLeaderboard();
+        } catch (error) {
+          console.error('Failed to submit score:', error);
+          elements.modalMessage.textContent = 'Failed to save score';
+          showToast(`Failed to save score: ${error.message}`, 'error');
+        } finally {
+          isSubmittingScore = false;
+        }
+      }
+
+      // Show game over modal
+      function showGameOverModal(result) {
+        const isWin = result.winner === 'player';
+
+        elements.modalContent.className = `modal ${isWin ? 'win' : 'lose'}`;
+        elements.modalTitle.textContent = isWin ? 'You Win!' : 'Game Over';
+        elements.modalScore.textContent = `${result.playerScore} - ${result.aiScore}`;
+
+        if (isWin) {
+          submitScore(result.playerScore, result.duration);
+        } else {
+          elements.modalMessage.textContent = 'Better luck next time!';
+        }
+
+        elements.gameOverModal.classList.add('active');
+      }
+
+      // Hide game over modal
+      function hideGameOverModal() {
+        elements.gameOverModal.classList.remove('active');
+      }
+
+      // Update button states
+      function updateButtons() {
+        const state = game.getState();
+
+        switch (state) {
+          case 'waiting':
+            elements.startBtn.textContent = 'Start Game';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.disabled = true;
+            break;
+          case 'playing':
+            elements.startBtn.textContent = 'Restart';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.textContent = 'Pause';
+            elements.pauseBtn.disabled = false;
+            break;
+          case 'paused':
+            elements.startBtn.textContent = 'Restart';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.textContent = 'Resume';
+            elements.pauseBtn.disabled = false;
+            break;
+          case 'gameover':
+            elements.startBtn.textContent = 'Play Again';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.disabled = true;
+            break;
+        }
+      }
+
+      // Game event handlers
+      game.onScoreUpdate = function(playerScore, aiScore) {
+        elements.playerScore.textContent = playerScore;
+        elements.aiScore.textContent = aiScore;
+      };
+
+      game.onGameOver = function(result) {
+        updateButtons();
+        showGameOverModal(result);
+      };
+
+      // Button event listeners
+      elements.startBtn.addEventListener('click', () => {
+        hideGameOverModal();
+        game.reset();
+        game.start();
+        updateButtons();
+      });
+
+      elements.pauseBtn.addEventListener('click', () => {
+        const state = game.getState();
+        if (state === 'playing') {
+          game.pause();
+        } else if (state === 'paused') {
+          game.resume();
+        }
+        updateButtons();
+      });
+
+      elements.loginBtn.addEventListener('click', handleLogin);
+
+      elements.copyUserIdBtn.addEventListener('click', () => {
+        const userInfo = pongAPI.getUserInfo();
+        if (userInfo.userId) {
+          navigator.clipboard.writeText(userInfo.userId).then(() => {
+            showToast('User ID copied to clipboard', 'success');
+          }).catch(() => {
+            showToast('Failed to copy User ID', 'error');
+          });
+        }
+      });
+
+      elements.refreshLeaderboardBtn.addEventListener('click', () => {
+        pongAPI.leaderboardCache = null;
+        pongAPI.leaderboardCacheTime = null;
+        loadLeaderboard();
+      });
+
+      elements.playAgainBtn.addEventListener('click', () => {
+        hideGameOverModal();
+        game.reset();
+        game.start();
+        updateButtons();
+      });
+
+      // Close modal on overlay click
+      elements.gameOverModal.addEventListener('click', (e) => {
+        if (e.target === elements.gameOverModal) {
+          hideGameOverModal();
+        }
+      });
+
+      // Keyboard shortcut to update buttons
+      document.addEventListener('keydown', () => {
+        setTimeout(updateButtons, 10);
+      });
+
+      // Canvas click to start
+      document.getElementById('gameCanvas').addEventListener('click', () => {
+        if (game.getState() === 'waiting') {
+          game.start();
+          updateButtons();
+        }
+      });
+
+      // Initialize
+      function init() {
+        updateUserUI();
+        updateButtons();
+        loadLeaderboard();
+
+        // Auto-login if not already logged in
+        if (!pongAPI.isLoggedIn() && CONFIG.CLIENT_ID) {
+          handleLogin();
+        }
+      }
+
+      // Start initialization when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>

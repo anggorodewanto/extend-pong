@@ -101,6 +101,9 @@ COPY third_party third_party
 RUN mkdir -p gateway && \
     cp -r /build/gateway/apidocs gateway/ || true
 
+# Copy static files for the web frontend
+COPY static static
+
 # Plugin Arch gRPC Server Port.
 EXPOSE 6565
 
