@@ -155,8 +155,8 @@ func main() {
 		leaderboardService = linkedMocks.Leaderboard
 	} else {
 		logrus.Info("Using REAL AGS services")
-		statisticsService = ags.NewAGSStatisticsService(configRepo, tokenRepo)
-		leaderboardService = ags.NewAGSLeaderboardService(configRepo, tokenRepo)
+		statisticsService = ags.NewAGSStatisticsService(configRepo, tokenRepo, logrusLogger)
+		leaderboardService = ags.NewAGSLeaderboardService(configRepo, tokenRepo, logrusLogger)
 	}
 
 	// Register Pong Service
@@ -272,15 +272,28 @@ func newGRPCGatewayHTTPServer(
 	}
 }
 
+// responseWriter wraps http.ResponseWriter to capture the status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
 // loggingMiddleware is a middleware that logs HTTP requests
 func loggingMiddleware(logger *logrus.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(wrapped, r)
 		duration := time.Since(start)
 		logger.WithFields(logrus.Fields{
 			"method":   r.Method,
 			"path":     r.URL.Path,
+			"status":   wrapped.statusCode,
 			"duration": duration,
 		}).Info("HTTP request")
 	})

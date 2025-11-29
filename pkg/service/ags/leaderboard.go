@@ -8,29 +8,33 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/AccelByte/accelbyte-go-sdk/leaderboard-sdk/pkg/leaderboardclient/leaderboard_data"
+	"github.com/AccelByte/accelbyte-go-sdk/leaderboard-sdk/pkg/leaderboardclient/leaderboard_data_v3"
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/factory"
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/repository"
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/service/leaderboard"
+	"github.com/sirupsen/logrus"
 )
 
 // AGSLeaderboardService implements LeaderboardService using the AccelByte SDK
 type AGSLeaderboardService struct {
-	leaderboardDataService *leaderboard.LeaderboardDataService
+	leaderboardDataV3Service *leaderboard.LeaderboardDataV3Service
+	logger                   *logrus.Logger
 }
 
 // NewAGSLeaderboardService creates a new AGS Leaderboard service
 func NewAGSLeaderboardService(
 	configRepo repository.ConfigRepository,
 	tokenRepo repository.TokenRepository,
+	logger *logrus.Logger,
 ) *AGSLeaderboardService {
 	leaderboardClient := factory.NewLeaderboardClient(configRepo)
 	return &AGSLeaderboardService{
-		leaderboardDataService: &leaderboard.LeaderboardDataService{
+		leaderboardDataV3Service: &leaderboard.LeaderboardDataV3Service{
 			Client:           leaderboardClient,
 			ConfigRepository: configRepo,
 			TokenRepository:  tokenRepo,
 		},
+		logger: logger,
 	}
 }
 
@@ -40,14 +44,21 @@ func (s *AGSLeaderboardService) GetAllTimeLeaderboard(
 	namespace, leaderboardCode string,
 	limit, offset int64,
 ) (*LeaderboardResult, error) {
-	params := leaderboard_data.NewGetAllTimeLeaderboardRankingPublicV1Params()
+	params := leaderboard_data_v3.NewGetAllTimeLeaderboardRankingPublicV3Params()
 	params.Namespace = namespace
 	params.LeaderboardCode = leaderboardCode
 	params.Limit = &limit
 	params.Offset = &offset
 
-	resp, err := s.leaderboardDataService.GetAllTimeLeaderboardRankingPublicV1Short(params)
+	resp, err := s.leaderboardDataV3Service.GetAllTimeLeaderboardRankingPublicV3Short(params)
 	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"namespace":       namespace,
+			"leaderboardCode": leaderboardCode,
+			"limit":           limit,
+			"offset":          offset,
+			"error":           err,
+		}).Error("AGS Leaderboard: failed to get leaderboard rankings")
 		return nil, fmt.Errorf("failed to get leaderboard rankings: %w", err)
 	}
 
@@ -56,8 +67,6 @@ func (s *AGSLeaderboardService) GetAllTimeLeaderboard(
 		TotalCount: 0,
 	}
 
-	// resp is *leaderboard_data.GetAllTimeLeaderboardRankingPublicV1Response
-	// resp.Data is []*leaderboardclientmodels.ModelsUserPoint
 	if resp == nil || resp.Data == nil {
 		return result, nil
 	}

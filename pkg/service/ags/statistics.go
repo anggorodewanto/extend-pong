@@ -13,17 +13,20 @@ import (
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/service/social"
 	"github.com/AccelByte/accelbyte-go-sdk/social-sdk/pkg/socialclient/user_statistic"
 	"github.com/AccelByte/accelbyte-go-sdk/social-sdk/pkg/socialclientmodels"
+	"github.com/sirupsen/logrus"
 )
 
 // AGSStatisticsService implements StatisticsService using the AccelByte SDK
 type AGSStatisticsService struct {
 	userStatisticService *social.UserStatisticService
+	logger               *logrus.Logger
 }
 
 // NewAGSStatisticsService creates a new AGS Statistics service
 func NewAGSStatisticsService(
 	configRepo repository.ConfigRepository,
 	tokenRepo repository.TokenRepository,
+	logger *logrus.Logger,
 ) *AGSStatisticsService {
 	socialClient := factory.NewSocialClient(configRepo)
 	return &AGSStatisticsService{
@@ -32,6 +35,7 @@ func NewAGSStatisticsService(
 			ConfigRepository: configRepo,
 			TokenRepository:  tokenRepo,
 		},
+		logger: logger,
 	}
 }
 
@@ -53,6 +57,13 @@ func (s *AGSStatisticsService) UpdateUserStatItem(
 
 	resp, err := s.userStatisticService.BulkIncUserStatItemValue1Short(params)
 	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"namespace": namespace,
+			"userID":    userID,
+			"statCode":  statCode,
+			"value":     value,
+			"error":     err,
+		}).Error("AGS Statistics: failed to update user stat item")
 		return fmt.Errorf("failed to update user stat item: %w", err)
 	}
 
@@ -61,6 +72,12 @@ func (s *AGSStatisticsService) UpdateUserStatItem(
 	if resp != nil {
 		for _, result := range resp {
 			if result != nil && !result.Success {
+				s.logger.WithFields(logrus.Fields{
+					"namespace": namespace,
+					"userID":    userID,
+					"statCode":  statCode,
+					"value":     value,
+				}).Error("AGS Statistics: stat update operation returned failure")
 				return fmt.Errorf("stat update failed for stat code %s", statCode)
 			}
 		}
