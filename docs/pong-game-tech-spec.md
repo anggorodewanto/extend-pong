@@ -162,7 +162,7 @@ static/
 #### Statistics Service
 - Use AccelByte Go SDK's Statistics service
 - Create stat configuration in AGS Admin Portal:
-  - Stat Code: `pong_high_score`
+  - Stat Code: `pong-high-score`
   - Type: `INT`
   - Aggregation: `MAX`
   - Visibility: `PUBLIC`
@@ -172,8 +172,8 @@ static/
 #### Leaderboard Service
 - Use AccelByte Go SDK's Leaderboard service
 - Configure leaderboard in AGS Admin Portal:
-  - Leaderboard Code: `pong_leaderboard`
-  - Stat Code: `pong_high_score`
+  - Leaderboard Code: `pong-leaderboard`
+  - Stat Code: `pong-high-score`
   - Sort Order: `DESCENDING`
   - Cycle: `ALLTIME` or `WEEKLY` (configurable)
 - Backend will call `GetLeaderboardRankingPublicV1` to fetch top scores
@@ -235,8 +235,8 @@ static/
 1. **Create AGS Resources**
    - Namespace setup (if not exists)
    - IAM OAuth client configuration
-   - Statistics configuration (`pong_high_score`)
-   - Leaderboard configuration (`pong_leaderboard`)
+   - Statistics configuration (`pong-high-score`)
+   - Leaderboard configuration (`pong-leaderboard`)
 
 2. **Environment Variables**
    - Update `.env` file with required credentials
@@ -335,7 +335,7 @@ Two OAuth clients are required:
      - `NAMESPACE:{namespace}:LEADERBOARD:*` (for leaderboard read)
 
 #### Statistics Setup
-- Code: `pong_high_score`
+- Code: `pong-high-score`
 - Name: "Pong High Score"
 - Type: INT
 - Set By: CLIENT
@@ -343,9 +343,9 @@ Two OAuth clients are required:
 - Status: ACTIVE
 
 #### Leaderboard Setup
-- Code: `pong_leaderboard`
+- Code: `pong-leaderboard`
 - Name: "Pong Global Leaderboard"
-- Stat Code: `pong_high_score`
+- Stat Code: `pong-high-score`
 - Descending: true
 - Start Time: (current date)
 - Reset: ALLTIME or WEEKLY
