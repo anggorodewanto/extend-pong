@@ -194,13 +194,13 @@
         const html = `
           <ul class="leaderboard-list">
             ${data.entries.map((entry, index) => {
-              const isCurrentUser = userInfo.userId === entry.user_id;
+              const isCurrentUser = userInfo.userId === entry.userId;
               const rankClass = index < 3 ? `top-${index + 1}` : '';
               return `
                 <li class="leaderboard-item ${isCurrentUser ? 'current-user' : ''}">
                   <span class="rank ${rankClass}">${entry.rank || index + 1}</span>
                   <div class="player-info">
-                    <div class="player-name">${entry.display_name || `Player_${entry.user_id.substring(0, 6)}`}</div>
+                    <div class="player-name">${entry.displayName || `Player_${entry.userId?.substring(0, 6) || 'Unknown'}`}</div>
                   </div>
                   <span class="player-score">${entry.score}</span>
                 </li>
