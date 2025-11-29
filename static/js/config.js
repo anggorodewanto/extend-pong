@@ -6,7 +6,7 @@ const CONFIG = {
   AGS_BASE_URL: 'https://abtestdewa-pong.internal.gamingservices.accelbyte.io',
   NAMESPACE: 'abtestdewa-pong',
   CLIENT_ID: 'd6bb5dd2cf6b4d23bd6d6400d7886b94', // Public OAuth client for headless login
-  BACKEND_URL: window.location.origin + '/pong',
+  BACKEND_URL: window.location.origin + '/' + window.location.pathname.split('/')[1],
 
   // Game Canvas
   CANVAS_WIDTH: 800,
