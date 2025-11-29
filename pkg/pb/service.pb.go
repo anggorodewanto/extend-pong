@@ -348,12 +348,12 @@ const file_service_proto_rawDesc = "" +
 	"\x16GetLeaderboardResponse\x123\n" +
 	"\aentries\x18\x01 \x03(\v2\x19.service.LeaderboardEntryR\aentries\x12\x1f\n" +
 	"\vtotal_count\x18\x02 \x01(\x05R\n" +
-	"totalCount2\xc5\x03\n" +
-	"\vPongService\x12\xf8\x01\n" +
-	"\vSubmitScore\x12\x1b.service.SubmitScoreRequest\x1a\x1c.service.SubmitScoreResponse\"\xad\x01\x92AX\x12\fSubmit score\x1a:Submit player's score to update statistics and leaderboardb\f\n" +
+	"totalCount2\xc3\x03\n" +
+	"\vPongService\x12\xf6\x01\n" +
+	"\vSubmitScore\x12\x1b.service.SubmitScoreRequest\x1a\x1c.service.SubmitScoreResponse\"\xab\x01\x92AX\x12\fSubmit score\x1a:Submit player's score to update statistics and leaderboardb\f\n" +
 	"\n" +
 	"\n" +
-	"\x06Bearer\x12\x00\x8a\xb5\x18.NAMESPACE:{namespace}:USER:{user_id}:STATISTIC\x90\xb5\x18\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/public/scores\x12\xba\x01\n" +
+	"\x06Bearer\x12\x00\x8a\xb5\x18,NAMESPACE:{namespace}:USER:{userId}:STATITEM\x90\xb5\x18\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/public/scores\x12\xba\x01\n" +
 	"\x0eGetLeaderboard\x12\x1e.service.GetLeaderboardRequest\x1a\x1f.service.GetLeaderboardResponse\"g\x92AF\x12\x0fGet leaderboard\x1a3Get top scores from the leaderboard (public access)\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/leaderboardB\xb5\x01\x92A>\x12\x14\n" +
 	"\rPong Game API2\x031.0\"\x05/pongZ\x1f\n" +
 	"\x1d\n" +

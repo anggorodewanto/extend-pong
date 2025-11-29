@@ -20,7 +20,7 @@ service PongService {
   // Submit player's score to AGS Statistics
   rpc SubmitScore (SubmitScoreRequest) returns (SubmitScoreResponse) {
     option (permission.action) = CREATE;
-    option (permission.resource) = "NAMESPACE:{namespace}:USER:{user_id}:STATISTIC";
+    option (permission.resource) = "NAMESPACE:{namespace}:USER:{userId}:STATITEM";
     option (google.api.http) = {
       post: "/v1/public/scores"
       body: "*"
