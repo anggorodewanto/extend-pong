@@ -24,9 +24,6 @@ const CONFIG = {
   BALL_MAX_SPEED: 12,
   BALL_SPEED_INCREMENT: 0.5, // Speed increase on paddle hit
 
-  // Game Rules
-  WINNING_SCORE: 11,
-
   // AI Configuration
   AI_DIFFICULTY: 0.7, // 0.0 (easy) to 1.0 (hard)
   AI_REACTION_DELAY: 50, // milliseconds

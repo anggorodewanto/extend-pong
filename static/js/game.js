@@ -11,8 +11,7 @@ class PongGame {
     this.canvas.height = CONFIG.CANVAS_HEIGHT;
 
     // Game state
-    this.state = 'waiting'; // waiting, playing, paused, gameover
-    this.winner = null;
+    this.state = 'waiting'; // waiting, playing, paused
     this.gameStartTime = null;
 
     // Scores
@@ -38,8 +37,8 @@ class PongGame {
     this.animationId = null;
 
     // Event callbacks
-    this.onGameOver = null;
     this.onScoreUpdate = null;
+    this.onPlayerScore = null;
 
     // Bind event handlers
     this._bindEvents();
@@ -167,10 +166,6 @@ class PongGame {
 
   // Game Control Methods
   start() {
-    if (this.state === 'gameover') {
-      this.reset();
-    }
-
     this.state = 'playing';
     this.gameStartTime = Date.now();
     this._resetBall(Math.random() > 0.5 ? 1 : -1);
@@ -197,7 +192,6 @@ class PongGame {
     this.state = 'waiting';
     this.playerScore = 0;
     this.aiScore = 0;
-    this.winner = null;
     this.gameStartTime = null;
 
     this._initPaddles();
@@ -244,9 +238,6 @@ class PongGame {
 
     // Check for scoring
     this._checkScoring();
-
-    // Check for win condition
-    this._checkWinCondition();
   }
 
   _updatePlayerPaddle(timeScale) {
@@ -380,6 +371,7 @@ class PongGame {
     if (this.ball.x - this.ball.size / 2 > CONFIG.CANVAS_WIDTH) {
       this.playerScore++;
       this._onScore();
+      this._onPlayerScore();
       this._resetBall(-1); // Ball goes towards AI
     }
   }
@@ -390,28 +382,9 @@ class PongGame {
     }
   }
 
-  _checkWinCondition() {
-    if (this.playerScore >= CONFIG.WINNING_SCORE) {
-      this.winner = 'player';
-      this._endGame();
-    } else if (this.aiScore >= CONFIG.WINNING_SCORE) {
-      this.winner = 'ai';
-      this._endGame();
-    }
-  }
-
-  _endGame() {
-    this.state = 'gameover';
-
-    const gameDuration = Math.floor((Date.now() - this.gameStartTime) / 1000);
-
-    if (this.onGameOver) {
-      this.onGameOver({
-        winner: this.winner,
-        playerScore: this.playerScore,
-        aiScore: this.aiScore,
-        duration: gameDuration
-      });
+  _onPlayerScore() {
+    if (this.onPlayerScore) {
+      this.onPlayerScore();
     }
   }
 
@@ -441,8 +414,6 @@ class PongGame {
       this._drawWaitingOverlay();
     } else if (this.state === 'paused') {
       this._drawPausedOverlay();
-    } else if (this.state === 'gameover') {
-      this._drawGameOverOverlay();
     }
   }
 
@@ -505,7 +476,7 @@ class PongGame {
     ctx.font = '20px sans-serif';
     ctx.fillText('Press SPACE or click START to play', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2);
     ctx.fillText('Use W/S or Arrow keys to move', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 40);
-    ctx.fillText(`First to ${CONFIG.WINNING_SCORE} wins!`, CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 80);
+    ctx.fillText('Score points to climb the leaderboard!', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 80);
   }
 
   _drawPausedOverlay() {
@@ -521,26 +492,6 @@ class PongGame {
 
     ctx.font = '20px sans-serif';
     ctx.fillText('Press SPACE to resume', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 20);
-  }
-
-  _drawGameOverOverlay() {
-    const ctx = this.ctx;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
-
-    ctx.fillStyle = CONFIG.COLORS.TEXT;
-    ctx.font = 'bold 40px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const message = this.winner === 'player' ? 'YOU WIN!' : 'GAME OVER';
-    ctx.fillText(message, CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 - 40);
-
-    ctx.font = '24px sans-serif';
-    ctx.fillText(`Final Score: ${this.playerScore} - ${this.aiScore}`, CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 10);
-
-    ctx.font = '18px sans-serif';
-    ctx.fillText('Press SPACE or click PLAY AGAIN to restart', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 60);
   }
 
   // Getters
