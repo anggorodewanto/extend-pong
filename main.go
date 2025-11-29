@@ -8,8 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"extend-custom-guild-service/pkg/service"
-	"extend-custom-guild-service/pkg/service/ags"
+	"extend-pong/pkg/service"
+	"extend-pong/pkg/service/ags"
 	"fmt"
 	"log"
 	"net"
@@ -23,7 +23,7 @@ import (
 
 	"github.com/go-openapi/loads"
 
-	"extend-custom-guild-service/pkg/common"
+	"extend-pong/pkg/common"
 
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/repository"
 
@@ -43,7 +43,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
-	pb "extend-custom-guild-service/pkg/pb"
+	pb "extend-pong/pkg/pb"
 
 	sdkAuth "github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/utils/auth"
 	prometheusGrpc "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -58,7 +58,7 @@ const (
 )
 
 var (
-	serviceName = common.GetEnv("OTEL_SERVICE_NAME", "ExtendCustomServiceGo")
+	serviceName = common.GetEnv("OTEL_SERVICE_NAME", "PongService")
 	logLevelStr = common.GetEnv("LOG_LEVEL", logrus.InfoLevel.String())
 	basePath    = common.GetBasePath()
 )

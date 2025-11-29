@@ -27,7 +27,7 @@ import (
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/service/iam"
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/utils/auth/validator"
 
-	pb "extend-custom-guild-service/pkg/pb"
+	pb "extend-pong/pkg/pb"
 )
 
 var (

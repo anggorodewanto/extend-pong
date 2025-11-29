@@ -9,8 +9,8 @@ import (
 	"errors"
 	"testing"
 
-	pb "extend-custom-guild-service/pkg/pb"
-	"extend-custom-guild-service/pkg/service/ags"
+	pb "extend-pong/pkg/pb"
+	"extend-pong/pkg/service/ags"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "extend-custom-guild-service/pkg/pb"
+	pb "extend-pong/pkg/pb"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"

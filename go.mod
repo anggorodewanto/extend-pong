@@ -1,4 +1,4 @@
-module extend-custom-guild-service
+module extend-pong
 
 go 1.24
 

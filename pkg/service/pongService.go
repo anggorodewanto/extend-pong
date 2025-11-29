@@ -7,8 +7,8 @@ package service
 import (
 	"context"
 
-	pb "extend-custom-guild-service/pkg/pb"
-	"extend-custom-guild-service/pkg/service/ags"
+	pb "extend-pong/pkg/pb"
+	"extend-pong/pkg/service/ags"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
