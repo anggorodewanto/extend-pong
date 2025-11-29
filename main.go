@@ -60,7 +60,7 @@ const (
 var (
 	serviceName = common.GetEnv("OTEL_SERVICE_NAME", "ExtendCustomServiceGo")
 	logLevelStr = common.GetEnv("LOG_LEVEL", logrus.InfoLevel.String())
-	basePath	= common.GetBasePath()
+	basePath    = common.GetBasePath()
 )
 
 func main() {
@@ -224,7 +224,7 @@ func main() {
 		),
 	)
 
-	// Start gRPC Server	
+	// Start gRPC Server
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcServerPort))
 	if err != nil {
 		logrus.Fatalf("Failed to listen to tcp:%d: %v", grpcServerPort, err)
