@@ -39,8 +39,6 @@ service PongService {
 
   // Get leaderboard from AGS (public access - no auth required)
   rpc GetLeaderboard (GetLeaderboardRequest) returns (GetLeaderboardResponse) {
-    option (permission.action) = READ;
-    option (permission.resource) = "NAMESPACE:{namespace}:LEADERBOARD";
     option (google.api.http) = {
       get: "/v1/public/leaderboard"
     };
