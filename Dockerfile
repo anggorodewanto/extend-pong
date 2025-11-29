@@ -103,6 +103,7 @@ RUN mkdir -p gateway && \
 
 # Copy static files for the web frontend
 COPY static static
+RUN chmod -R 755 static && find static -type f -exec chmod 644 {} \;
 
 # Plugin Arch gRPC Server Port.
 EXPOSE 6565
