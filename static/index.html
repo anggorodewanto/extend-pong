@@ -63,6 +63,14 @@
           </div>
           <button class="btn btn-secondary login-btn" id="loginBtn">Login</button>
         </div>
+        <!-- Lobby Status -->
+        <div class="lobby-status" id="lobbyStatusContainer" style="display: none;">
+          <div class="lobby-status-row">
+            <span class="lobby-status-label">Lobby:</span>
+            <span class="lobby-status-indicator" id="lobbyStatusIndicator"></span>
+            <span class="lobby-status-text" id="lobbyStatusText">Disconnected</span>
+          </div>
+        </div>
       </div>
 
       <!-- Leaderboard -->
@@ -102,6 +110,7 @@
   <!-- Scripts -->
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/multiplayer.js"></script>
   <script src="js/game.js"></script>
   <script>
     // Main application controller
@@ -122,7 +131,10 @@
         copyUserIdBtn: document.getElementById('copyUserIdBtn'),
         leaderboardContainer: document.getElementById('leaderboardContainer'),
         refreshLeaderboardBtn: document.getElementById('refreshLeaderboardBtn'),
-        toastContainer: document.getElementById('toastContainer')
+        toastContainer: document.getElementById('toastContainer'),
+        lobbyStatusContainer: document.getElementById('lobbyStatusContainer'),
+        lobbyStatusIndicator: document.getElementById('lobbyStatusIndicator'),
+        lobbyStatusText: document.getElementById('lobbyStatusText')
       };
 
       // Initialize game
@@ -153,6 +165,7 @@
           elements.copyUserIdBtn.style.display = 'flex';
           elements.loginBtn.textContent = 'Logged In';
           elements.loginBtn.disabled = true;
+          elements.lobbyStatusContainer.style.display = 'block';
         } else {
           elements.statusIndicator.classList.remove('online');
           elements.userName.textContent = 'Not logged in';
@@ -160,8 +173,55 @@
           elements.copyUserIdBtn.style.display = 'none';
           elements.loginBtn.textContent = 'Login';
           elements.loginBtn.disabled = false;
+          elements.lobbyStatusContainer.style.display = 'none';
         }
       }
+
+      // Update lobby status UI
+      function updateLobbyStatusUI(state) {
+        const stateConfig = {
+          'idle': { text: 'Disconnected', class: '' },
+          'connecting_lobby': { text: 'Connecting...', class: 'connecting' },
+          'lobby_connected': { text: 'Connected', class: 'connected' },
+          'queuing': { text: 'Finding Match...', class: 'connecting' },
+          'matched': { text: 'Match Found!', class: 'connected' },
+          'joining_session': { text: 'Joining Session...', class: 'connecting' },
+          'in_session': { text: 'In Session', class: 'connected' },
+          'connecting_p2p': { text: 'Connecting P2P...', class: 'connecting' },
+          'playing': { text: 'Playing', class: 'connected' },
+          'reconnecting': { text: 'Reconnecting...', class: 'connecting' },
+          'finished': { text: 'Finished', class: '' },
+          'error': { text: 'Error', class: 'error' }
+        };
+
+        const config = stateConfig[state] || { text: state, class: '' };
+        elements.lobbyStatusText.textContent = config.text;
+        elements.lobbyStatusIndicator.className = 'lobby-status-indicator ' + config.class;
+      }
+
+      // Connect to lobby WebSocket
+      async function connectToLobby() {
+        updateLobbyStatusUI('connecting_lobby');
+
+        try {
+          await pongMultiplayer.connectLobby();
+          showToast('Connected to lobby', 'success');
+        } catch (error) {
+          console.error('Failed to connect to lobby:', error);
+          showToast(`Lobby connection failed: ${error.message}`, 'error');
+          updateLobbyStatusUI('error');
+        }
+      }
+
+      // Setup multiplayer state change handler
+      pongMultiplayer.onStateChange = function(newState, oldState) {
+        console.log(`[App] Multiplayer state: ${oldState} -> ${newState}`);
+        updateLobbyStatusUI(newState);
+      };
+
+      pongMultiplayer.onError = function(message) {
+        showToast(message, 'error');
+      };
 
       // Render leaderboard
       function renderLeaderboard(data) {
@@ -227,6 +287,9 @@
           updateUserUI();
           showToast('Logged in successfully!', 'success');
           loadLeaderboard(); // Refresh to highlight user
+
+          // Connect to lobby WebSocket after successful login
+          connectToLobby();
         } catch (error) {
           console.error('Login failed:', error);
           showToast(`Login failed: ${error.message}`, 'error');
@@ -372,8 +435,11 @@
           // handleLogin will call loadLeaderboard after successful login
           handleLogin();
         } else {
-          // Only load leaderboard here if already logged in (or no CLIENT_ID)
+          // Already logged in (session restored) - load leaderboard and connect to lobby
           loadLeaderboard();
+          if (pongAPI.isLoggedIn()) {
+            connectToLobby();
+          }
         }
       }
 

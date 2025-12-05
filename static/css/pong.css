@@ -252,6 +252,56 @@ body {
   margin-top: 8px;
 }
 
+/* Lobby Status */
+.lobby-status {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.lobby-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lobby-status-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.lobby-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.lobby-status-indicator.connected {
+  background: var(--success-color);
+  box-shadow: 0 0 8px var(--success-color);
+}
+
+.lobby-status-indicator.connecting {
+  background: #ffaa00;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.lobby-status-indicator.error {
+  background: var(--error-color);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.lobby-status-text {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 /* Leaderboard */
 .leaderboard-list {
   list-style: none;
