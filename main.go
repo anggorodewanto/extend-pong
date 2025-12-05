@@ -12,6 +12,7 @@ import (
 	"extend-pong/pkg/service/ags"
 	"fmt"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -62,6 +63,23 @@ var (
 	logLevelStr = common.GetEnv("LOG_LEVEL", logrus.InfoLevel.String())
 	basePath    = common.GetBasePath()
 )
+
+func init() {
+	// Register MIME types for static files (fixes Firefox X-Content-Type-Options: nosniff blocking)
+	_ = mime.AddExtensionType(".css", "text/css")
+	_ = mime.AddExtensionType(".js", "application/javascript")
+	_ = mime.AddExtensionType(".json", "application/json")
+	_ = mime.AddExtensionType(".html", "text/html")
+	_ = mime.AddExtensionType(".png", "image/png")
+	_ = mime.AddExtensionType(".jpg", "image/jpeg")
+	_ = mime.AddExtensionType(".jpeg", "image/jpeg")
+	_ = mime.AddExtensionType(".gif", "image/gif")
+	_ = mime.AddExtensionType(".svg", "image/svg+xml")
+	_ = mime.AddExtensionType(".ico", "image/x-icon")
+	_ = mime.AddExtensionType(".woff", "font/woff")
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
+	_ = mime.AddExtensionType(".ttf", "font/ttf")
+}
 
 func main() {
 	logrus.Infof("Starting %s...", serviceName)
@@ -379,8 +397,16 @@ func createCombinedHandler(grpcGateway http.Handler, staticHandler http.Handler)
 			return
 		}
 
+		// Redirect basePath without trailing slash to basePath with trailing slash
+		// This ensures relative paths in HTML resolve correctly
+		if r.URL.Path == basePath {
+			http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
+
+			return
+		}
+
 		// Route requests under basePath to static files
-		if strings.HasPrefix(r.URL.Path, basePath+"/") || r.URL.Path == basePath {
+		if strings.HasPrefix(r.URL.Path, basePath+"/") {
 			staticHandler.ServeHTTP(w, r)
 
 			return
