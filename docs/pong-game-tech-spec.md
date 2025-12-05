@@ -2,9 +2,14 @@
 
 ## Overview
 
-This document outlines the technical specification for modifying the AGS Extend Service Extension template to serve a classic Pong game with integrated AccelByte Gaming Services (AGS) backend functionality. The implementation will feature a single-player Pong game (player vs computer) with headless authentication, high score persistence, and leaderboard functionality.
+This document outlines the technical specification for modifying the AGS Extend Service Extension template to serve a classic Pong game with integrated AccelByte Gaming Services (AGS) backend functionality. The implementation features:
+
+- **Single-player Mode**: Player vs Computer AI with headless authentication, high score persistence, and leaderboard functionality
+- **Multiplayer Mode**: Real-time P2P multiplayer using AGS Matchmaking, Session Service, and TURN relay servers with WebRTC
 
 ## Architecture
+
+### Single-Player Architecture
 
 ```mermaid
 flowchart LR
@@ -28,6 +33,58 @@ flowchart LR
     SV -->|SDK| LB
 ```
 
+### Multiplayer Architecture
+
+```mermaid
+flowchart TB
+    subgraph "Player A Browser"
+        ClientA[Game Client A]
+        SDKA[AGS TypeScript SDK]
+        WebRTCA[WebRTC Peer]
+    end
+
+    subgraph "Player B Browser"
+        ClientB[Game Client B]
+        SDKB[AGS TypeScript SDK]
+        WebRTCB[WebRTC Peer]
+    end
+
+    subgraph "AGS Backend Services"
+        IAM[IAM Service]
+        Lobby[Lobby Service<br/>WebSocket]
+        Match[Matchmaking V2]
+        Session[Session Service]
+        TURN[TURN Manager]
+    end
+
+    subgraph "AGS Infrastructure"
+        TURNServer[TURN/STUN Servers<br/>COTURN]
+    end
+
+    ClientA --> SDKA
+    ClientB --> SDKB
+
+    SDKA -->|1. Auth| IAM
+    SDKB -->|1. Auth| IAM
+
+    SDKA <-->|2. WebSocket| Lobby
+    SDKB <-->|2. WebSocket| Lobby
+
+    SDKA -->|3. Create Ticket| Match
+    SDKB -->|3. Create Ticket| Match
+
+    Match -->|4. Match Found| Lobby
+    Lobby -->|5. Session Created| Session
+
+    SDKA -->|6. Get Credentials| TURN
+    SDKB -->|6. Get Credentials| TURN
+
+    WebRTCA <-->|7. P2P via ICE| TURNServer
+    WebRTCB <-->|7. P2P via ICE| TURNServer
+
+    WebRTCA <-.->|8. Game Data| WebRTCB
+```
+
 ### Service Base Path
 
 The service is configured with a base path of `/pong`. All REST API endpoints and static files are served under this path:
@@ -46,10 +103,11 @@ The service is configured with a base path of `/pong`. All REST API endpoints an
 
 #### Game Features
 - **Single Player Mode**: Player vs Computer AI
+- **Multiplayer Mode**: Real-time P2P player vs player
 - **Game Mechanics**:
   - Ball physics with velocity and collision detection
   - Player paddle controlled by keyboard (Arrow keys or W/S)
-  - Computer AI with difficulty scaling
+  - Computer AI with difficulty scaling (single-player)
   - Score tracking (first to 11 points wins)
 - **UI Components**:
   - Game canvas (800x600px recommended)
@@ -58,6 +116,11 @@ The service is configured with a base path of `/pong`. All REST API endpoints an
   - Leaderboard panel
   - Login status indicator
   - Game over screen with score submission
+  - **Multiplayer UI**:
+    - Mode selection (Single Player / Multiplayer)
+    - Matchmaking queue with status indicator
+    - Connection quality indicator
+    - Opponent info display
 
 #### Frontend-Backend Integration
 The frontend will make the following API calls:
@@ -178,6 +241,590 @@ static/
   - Cycle: `ALLTIME` or `WEEKLY` (configurable)
 - Backend will call `GetLeaderboardRankingPublicV1` to fetch top scores
 
+## Multiplayer Mode
+
+### Overview
+
+The multiplayer mode enables real-time player-vs-player Pong matches using AGS's P2P infrastructure. The implementation leverages:
+
+- **AGS Matchmaking V2**: Queue players and find suitable opponents
+- **AGS Session Service**: Manage game sessions with P2P type
+- **AGS Lobby Service**: WebSocket for real-time notifications
+- **AGS TURN Manager**: Provide TURN/STUN credentials for NAT traversal
+- **WebRTC**: Browser-native P2P communication via RTCDataChannel
+
+### Technology Stack (Multiplayer)
+
+```
+Frontend Implementation:
+├── Vanilla JavaScript       # No framework dependencies
+├── Direct REST API calls    # AGS Matchmaking, Session, TURN APIs
+├── Native WebSocket         # AGS Lobby WebSocket connection
+└── Native WebRTC API        # P2P data channels
+```
+
+### Multiplayer Flow
+
+```mermaid
+sequenceDiagram
+    participant A as Player A
+    participant L as Lobby WS
+    participant M as Matchmaking
+    participant S as Session
+    participant T as TURN
+    participant B as Player B
+
+    Note over A,B: 1. Authentication and Lobby Connection
+    A->>L: Connect WebSocket
+    B->>L: Connect WebSocket
+
+    Note over A,B: 2. Matchmaking
+    A->>M: Create match ticket
+    B->>M: Create match ticket
+    M->>M: Find match
+    M->>L: Match found notification
+    L->>A: MatchmakingV2MatchFound
+    L->>B: MatchmakingV2MatchFound
+
+    Note over A,B: 3. Session Creation
+    S->>S: Create P2P game session
+    L->>A: SessionV2InvitedUserToGameSession
+    L->>B: SessionV2InvitedUserToGameSession
+    A->>S: Join session
+    B->>S: Join session
+
+    Note over A,B: 4. P2P Connection Setup
+    A->>T: Get TURN servers
+    A->>T: Get TURN credentials
+    B->>T: Get TURN servers
+    B->>T: Get TURN credentials
+
+    Note over A,B: 5. WebRTC Handshake via Lobby
+    A->>L: Send SDP offer
+    L->>B: Relay SDP offer
+    B->>L: Send SDP answer
+    L->>A: Relay SDP answer
+    A->>B: ICE candidates exchange
+    A-->>B: RTCDataChannel established
+
+    Note over A,B: 6. Game Play
+    A-->>B: Game state sync via DataChannel
+```
+
+### AGS Services Configuration
+
+#### Session Template (P2P)
+
+Create in AGS Admin Portal under **Multiplayer > Session Configuration**:
+
+| Setting | Value |
+|---------|-------|
+| Name | `pong-p2p-session` |
+| Type | `P2P` |
+| Joinability | `INVITE_ONLY` |
+| Min Players | `2` |
+| Max Players | `2` |
+| Invite Timeout | `30` seconds |
+| Inactive Timeout | `60` seconds |
+| Text Chat | `false` |
+| Auto Join | `true` |
+
+#### Match Ruleset
+
+Create in AGS Admin Portal under **Multiplayer > Matchmaking > Rulesets**:
+
+```json
+{
+  "name": "pong-1v1-ruleset",
+  "data": {
+    "alliance": {
+      "min_number": 2,
+      "max_number": 2,
+      "player_min_number": 1,
+      "player_max_number": 1
+    },
+    "alliance_flexing_rule": []
+  }
+}
+```
+
+#### Match Pool
+
+Create in AGS Admin Portal under **Multiplayer > Matchmaking > Match Pools**:
+
+| Setting | Value |
+|---------|-------|
+| Pool Name | `pong-1v1` |
+| Match Ruleset | `pong-1v1-ruleset` |
+| Session Template | `pong-p2p-session` |
+| Ticket Expiration | `120` seconds |
+| Match Function | `default` |
+
+### Frontend Implementation
+
+The multiplayer frontend uses vanilla JavaScript with direct REST API calls and native WebSocket/WebRTC APIs. No external SDK dependencies are required.
+
+#### Lobby WebSocket Connection
+
+```javascript
+class LobbyWebSocket {
+  constructor(baseUrl, namespace, accessToken) {
+    this.baseUrl = baseUrl;
+    this.accessToken = accessToken;
+    this.ws = null;
+    this.handlers = new Map();
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      // Convert https to wss
+      const wsUrl = this.baseUrl.replace('https://', 'wss://');
+      const url = `${wsUrl}/lobby`;
+
+      // Pass token via Sec-WebSocket-Protocol header (lobby server extracts it for auth)
+      // JavaScript WebSocket API cannot set custom headers like Authorization,
+      // so the token is passed as the protocol parameter instead
+      this.ws = new WebSocket(url, this.accessToken);
+
+      this.ws.onopen = () => {
+        console.log('Lobby WebSocket connected');
+        this._startPing();
+        resolve();
+      };
+
+      this.ws.onmessage = (event) => this._handleMessage(event.data);
+      this.ws.onerror = (error) => reject(error);
+      this.ws.onclose = (event) => this._emit('disconnected', event);
+    });
+  }
+
+  on(eventType, handler) {
+    if (!this.handlers.has(eventType)) {
+      this.handlers.set(eventType, []);
+    }
+    this.handlers.get(eventType).push(handler);
+  }
+
+  _handleMessage(rawData) {
+    // AGS Lobby uses text protocol: type: value\nkey: value\n...
+    const message = this._parseTextMessage(rawData);
+    const type = message.type || message.code;
+    this._emit(type, message);
+  }
+
+  _startPing() {
+    // Send heartbeat every 30 seconds to keep connection alive
+    // Lobby server expects: type, messageID fields
+    // Server read timeout is 60s, ping at 50s, so 30s is safe
+    setInterval(() => {
+      if (this.ws.readyState === WebSocket.OPEN) {
+        const messageId = Date.now().toString();
+        this.ws.send(`type: heartbeat\nmessageID: ${messageId}`);
+      }
+    }, 30000);
+  }
+}
+```
+
+#### Lobby WebSocket Keepalive
+
+The AGS Lobby server uses a dual keepalive mechanism:
+
+| Mechanism | Direction | Interval | Description |
+|-----------|-----------|----------|-------------|
+| WebSocket Ping/Pong | Server → Client | 50 seconds | Native WebSocket protocol frames; browser responds automatically |
+| Heartbeat Message | Client → Server | 30 seconds | Application-level message to reset read timeout |
+
+**Server Timing:**
+- **Read Timeout**: 60 seconds - connection closes if no data received
+- **Server Ping**: 50 seconds - server sends WebSocket ping frame if idle
+- **Client Heartbeat**: 30 seconds (recommended) - safely within the 60s window
+
+**Heartbeat Message Format:**
+```
+type: heartbeat
+messageID: <unique-id>
+```
+
+**Authentication:**
+- The WebSocket connection is authenticated via the `Sec-WebSocket-Protocol` header
+- The token is passed as the second argument to `new WebSocket(url, token)`
+- JavaScript WebSocket API cannot set custom headers like `Authorization`, so this is the standard workaround
+
+#### Matchmaking Flow
+
+```javascript
+// Subscribe to lobby notifications
+lobby.on('matchmakingMatchFound', (data) => {
+  console.log('Match found:', data);
+});
+
+lobby.on('sessionV2InvitedUserToGameSession', (data) => {
+  console.log('Session invite:', data.sessionID);
+  joinSession(data.sessionID);
+});
+
+// Create matchmaking ticket via REST API
+async function startMatchmaking() {
+  const response = await fetch(
+    `${CONFIG.AGS_BASE_URL}/match2/v1/namespaces/${CONFIG.NAMESPACE}/match-tickets`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        matchPool: 'pong-1v1',
+        attributes: {}
+      })
+    }
+  );
+  const data = await response.json();
+  return data.matchTicketID;
+}
+
+// Cancel matchmaking
+async function cancelMatchmaking(ticketId) {
+  await fetch(
+    `${CONFIG.AGS_BASE_URL}/match2/v1/namespaces/${CONFIG.NAMESPACE}/match-tickets/${ticketId}`,
+    {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    }
+  );
+}
+```
+
+#### Session Management
+
+```javascript
+// Join game session via REST API
+async function joinSession(sessionId) {
+  const response = await fetch(
+    `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}/join`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  const session = await response.json();
+
+  // Determine role based on session leader
+  const isHost = session.leaderId === currentUserId;
+
+  // Find opponent
+  const opponent = session.members.find(m => m.id !== currentUserId);
+
+  // Proceed to P2P connection
+  await setupP2PConnection(session, isHost);
+}
+
+// Leave session
+async function leaveSession(sessionId) {
+  await fetch(
+    `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}/leave`,
+    {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    }
+  );
+}
+```
+
+#### TURN Credential Retrieval
+
+```javascript
+// Get available TURN servers
+async function getTurnServers() {
+  const response = await fetch(`${CONFIG.AGS_BASE_URL}/turnmanager/turn`, {
+    headers: { 'Authorization': `Bearer ${accessToken}` }
+  });
+  return response.json();
+}
+
+// Get credentials for specific TURN server
+async function getTurnCredentials(region, ip, port) {
+  const response = await fetch(
+    `${CONFIG.AGS_BASE_URL}/turnmanager/turn/secret/${region}/${ip}/${port}`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  );
+  return response.json();
+}
+```
+
+#### WebRTC P2P Connection
+
+```javascript
+class PongP2PConnection {
+  constructor(turnCredentials, turnServer) {
+    const iceServers = [
+      { urls: `stun:${turnServer.ip}:${turnServer.port}` },
+      {
+        urls: `turn:${turnServer.ip}:${turnServer.port}`,
+        username: turnCredentials.username,
+        credential: turnCredentials.password
+      }
+    ];
+
+    this.peerConnection = new RTCPeerConnection({ iceServers });
+    this.dataChannel = null;
+    this._setupEventHandlers();
+  }
+
+  _setupEventHandlers() {
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this._sendSignaling({ type: 'ice-candidate', candidate: event.candidate.toJSON() });
+      }
+    };
+
+    this.peerConnection.ondatachannel = (event) => {
+      this.dataChannel = event.channel;
+      this._setupDataChannel();
+    };
+  }
+
+  _setupDataChannel() {
+    this.dataChannel.onopen = () => this.onConnected?.();
+    this.dataChannel.onmessage = (event) => {
+      this.onGameStateReceived?.(JSON.parse(event.data));
+    };
+    this.dataChannel.onclose = () => this.onDisconnected?.();
+  }
+
+  // Host creates the offer
+  async createOffer() {
+    this.dataChannel = this.peerConnection.createDataChannel('pong-game', {
+      ordered: false,
+      maxRetransmits: 0
+    });
+    this._setupDataChannel();
+
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    this._sendSignaling({ type: 'offer', sdp: offer.sdp });
+  }
+
+  // Guest handles offer and creates answer
+  async handleOffer(offer) {
+    await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
+      type: 'offer', sdp: offer.sdp
+    }));
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
+    this._sendSignaling({ type: 'answer', sdp: answer.sdp });
+  }
+
+  async handleAnswer(answer) {
+    await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
+      type: 'answer', sdp: answer.sdp
+    }));
+  }
+
+  sendGameState(state) {
+    if (this.dataChannel?.readyState === 'open') {
+      this.dataChannel.send(JSON.stringify(state));
+    }
+  }
+
+  // Callbacks
+  onConnected = null;
+  onDisconnected = null;
+  onGameStateReceived = null;
+}
+```
+
+### Game State Synchronization
+
+#### Network Protocol
+
+For a latency-sensitive game like Pong, use a hybrid authority model:
+
+```javascript
+// Game state object structure
+const gameState = {
+  timestamp: 0,        // For ordering/interpolation
+  sequence: 0,         // Packet sequence number
+  ball: {
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0
+  },
+  paddles: {
+    host: { y: 0 },    // Host controls left paddle
+    guest: { y: 0 }    // Guest controls right paddle
+  },
+  score: {
+    host: 0,
+    guest: 0
+  }
+};
+
+// Input state object structure
+const inputState = {
+  timestamp: 0,
+  paddleY: 0,          // Current paddle position
+  paddleVelocity: 0    // Direction of movement
+};
+```
+
+#### Authority Model
+
+| Aspect | Authority |
+|--------|-----------|
+| Ball physics | Host (session leader) |
+| Score tracking | Host |
+| Host paddle | Host |
+| Guest paddle | Guest (sent to host) |
+| Game start/end | Host |
+
+#### Netcode Strategy
+
+```javascript
+class PongNetcode {
+  constructor() {
+    this.TICK_RATE = 60;           // 60 Hz game loop
+    this.SEND_RATE = 30;           // 30 Hz network updates
+    this.INTERPOLATION_DELAY = 50; // 50ms interpolation buffer
+  }
+
+  // Client-side prediction for local paddle
+  predictLocalInput(input) {
+    // Apply input immediately for responsiveness
+    this.localPaddle.y = input.paddleY;
+  }
+
+  // Interpolate remote paddle position
+  interpolateRemotePaddle(states) {
+    const renderTime = Date.now() - this.INTERPOLATION_DELAY;
+
+    // Find two states to interpolate between
+    const before = states.findLast(s => s.timestamp <= renderTime);
+    const after = states.find(s => s.timestamp > renderTime);
+
+    if (before && after) {
+      const t = (renderTime - before.timestamp) / (after.timestamp - before.timestamp);
+      return this._lerp(before.paddleY, after.paddleY, t);
+    }
+    return before?.paddleY ?? after?.paddleY ?? this.remotePaddle.y;
+  }
+
+  // Ball reconciliation (guest receives authoritative state from host)
+  reconcileBallState(serverState) {
+    // Snap to server state if difference is significant
+    const dx = Math.abs(this.ball.x - serverState.ball.x);
+    const dy = Math.abs(this.ball.y - serverState.ball.y);
+
+    if (dx > 10 || dy > 10) {
+      // Significant desync - snap to server
+      this.ball.x = serverState.ball.x;
+      this.ball.y = serverState.ball.y;
+      this.ball.vx = serverState.ball.vx;
+      this.ball.vy = serverState.ball.vy;
+    }
+  }
+
+  _lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+}
+```
+
+### Signaling via Lobby WebSocket
+
+AGS Lobby WebSocket can be used for WebRTC signaling using party or custom notifications:
+
+```javascript
+// Send signaling message to peer via session attributes
+async function sendSignalingToPeer(sessionId, message) {
+  await fetch(
+    `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        attributes: {
+          [`signaling_${currentUserId}`]: JSON.stringify(message)
+        }
+      })
+    }
+  );
+}
+
+// Poll for signaling messages (or use session update notifications)
+async function pollSignalingMessages(sessionId, peerId) {
+  const response = await fetch(
+    `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  );
+  const session = await response.json();
+  const message = session.attributes?.[`signaling_${peerId}`];
+  if (message) {
+    return JSON.parse(message);
+  }
+  return null;
+}
+```
+
+### Error Handling & Reconnection
+
+```javascript
+class MultiplayerManager {
+  constructor() {
+    this.reconnectAttempts = 0;
+    this.MAX_RECONNECT_ATTEMPTS = 3;
+  }
+
+  async handleDisconnect(reason) {
+    if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+      this.reconnectAttempts++;
+      await this.attemptReconnect();
+    } else {
+      this.endMatchWithError('Connection lost');
+    }
+  }
+
+  async attemptReconnect() {
+    // 1. Reconnect Lobby WebSocket
+    await this.lobby.connect();
+
+    // 2. Check if still in session
+    const response = await fetch(
+      `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${this.currentSessionId}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+
+    if (response.ok) {
+      const session = await response.json();
+      // 3. Re-establish P2P connection
+      await this.setupP2PConnection(session);
+    } else {
+      this.endMatchWithError('Session expired');
+    }
+  }
+}
+```
+
+### Multiplayer Statistics
+
+Track multiplayer-specific stats in AGS:
+
+| Stat Code | Type | Aggregation | Description |
+|-----------|------|-------------|-------------|
+| `pong-mp-wins` | INT | SUM | Multiplayer wins |
+| `pong-mp-losses` | INT | SUM | Multiplayer losses |
+| `pong-mp-matches` | INT | SUM | Total multiplayer matches |
+| `pong-mp-winstreak` | INT | MAX | Best win streak |
+
 ## Implementation Plan
 
 ### Phase 1: Backend Service Modification
@@ -243,7 +890,7 @@ static/
    - Set `BASE_PATH=/pong`
    - Configure `PLUGIN_GRPC_SERVER_AUTH_ENABLED=true`
 
-### Phase 4: Testing & Deployment
+### Phase 4: Testing & Deployment (Single-Player)
 
 1. **Local Testing**
    - Test headless login flow
@@ -257,6 +904,73 @@ static/
    - Upload using `extend-helper-cli`
    - Configure environment secrets in AGS Portal
    - Deploy and verify
+
+### Phase 5: Multiplayer Implementation
+
+1. **AGS Portal Configuration**
+   - Create P2P session template (`pong-p2p-session`)
+   - Create match ruleset (`pong-1v1-ruleset`)
+   - Create match pool (`pong-1v1`)
+   - Configure multiplayer statistics
+   - Update OAuth client permissions for matchmaking/session
+
+2. **Frontend Multiplayer Integration**
+   - Implement Lobby WebSocket connection class
+   - Add Matchmaking REST API calls
+   - Add Session REST API calls
+   - Implement TURN credential retrieval
+
+3. **Matchmaking Integration**
+   - Implement "Find Match" button and UI
+   - Create matchmaking ticket flow
+   - Handle match found notifications
+   - Implement cancel matchmaking
+   - Add queue status indicators
+
+4. **Session Management**
+   - Handle session invite notifications
+   - Implement session join flow
+   - Determine host/guest roles
+   - Handle session leave/disconnect
+
+5. **P2P Connection**
+   - Implement TURN server selection
+   - Fetch TURN credentials
+   - Build WebRTC peer connection
+   - Implement signaling via session attributes
+   - Establish RTCDataChannel
+
+6. **Multiplayer Game Logic**
+   - Implement host authority model
+   - Add client-side prediction for paddles
+   - Implement ball state synchronization
+   - Add interpolation for smooth remote paddle movement
+   - Handle score updates and game end
+
+7. **Error Handling & Polish**
+   - Implement reconnection logic
+   - Add connection quality indicator
+   - Handle opponent disconnect gracefully
+   - Add match result submission to stats
+
+### Phase 6: Multiplayer Testing
+
+1. **Local P2P Testing**
+   - Test with two browser tabs/windows
+   - Verify matchmaking flow
+   - Test P2P connection establishment
+   - Validate game state sync
+
+2. **Network Condition Testing**
+   - Test with simulated latency
+   - Test with packet loss
+   - Verify TURN relay fallback
+   - Test reconnection scenarios
+
+3. **Load Testing**
+   - Multiple concurrent matches
+   - Matchmaking queue stress test
+   - Session service capacity
 
 ## Technical Considerations
 
@@ -318,12 +1032,15 @@ const CONFIG = {
 
 Two OAuth clients are required:
 
-1. **Public Client** (for frontend headless login)
+1. **Public Client** (for frontend headless login + multiplayer)
    - Client Type: **Public**
    - Grant Type: Device
    - Redirect URI: Not required for headless
    - Permissions:
      - `NAMESPACE:{namespace}:USER:*` (for headless account creation)
+     - `NAMESPACE:{namespace}:SESSION:GAME [CREATE,READ,UPDATE,DELETE]` (for game sessions)
+     - `NAMESPACE:{namespace}:MATCHMAKING:TICKET [CREATE,READ,DELETE]` (for matchmaking)
+     - `NAMESPACE:{namespace}:SESSIONBROWSER:SESSION [READ]` (for session browsing)
 
 2. **Confidential Client** (for backend service)
    - Client Type: **Confidential**
@@ -335,12 +1052,22 @@ Two OAuth clients are required:
      - `NAMESPACE:{namespace}:LEADERBOARD:*` (for leaderboard read)
 
 #### Statistics Setup
+
+**Single-Player Stats:**
 - Code: `pong-high-score`
 - Name: "Pong High Score"
 - Type: INT
 - Set By: CLIENT
 - Aggregation: MAX
 - Status: ACTIVE
+
+**Multiplayer Stats:**
+| Stat Code | Name | Type | Aggregation |
+|-----------|------|------|-------------|
+| `pong-mp-wins` | Multiplayer Wins | INT | SUM |
+| `pong-mp-losses` | Multiplayer Losses | INT | SUM |
+| `pong-mp-matches` | Total MP Matches | INT | SUM |
+| `pong-mp-winstreak` | Best Win Streak | INT | MAX |
 
 #### Leaderboard Setup
 - Code: `pong-leaderboard`
@@ -450,23 +1177,34 @@ namespace={namespace}
 
 ## Future Enhancements (Out of Scope)
 
-- Multiplayer mode (requires WebSocket/real-time communication)
-- Multiple difficulty levels
+- Multiple difficulty levels (single-player)
 - Power-ups and special effects
-- Social features (friend leaderboards)
-- Achievements integration
-- Match history
+- Social features (friend leaderboards, friend matches)
+- Match history persistence
 - Custom paddle/ball skins
 - Sound effects and music
+- Ranked matchmaking with skill-based matching
+- Spectator mode
+- Tournament brackets
 
 ## References
 
+### Core Services
 - [AGS Extend Service Extension Documentation](https://docs.accelbyte.io/gaming-services/services/extend/service-extension/)
 - [AccelByte Go SDK](https://github.com/AccelByte/accelbyte-go-sdk)
 - [AGS Statistics Service](https://docs.accelbyte.io/gaming-services/services/statistics/)
 - [AGS Leaderboard Service](https://docs.accelbyte.io/gaming-services/services/leaderboard/)
 - [AGS IAM Service](https://docs.accelbyte.io/gaming-services/services/access/)
 - [gRPC Gateway](https://github.com/grpc-ecosystem/grpc-gateway)
+
+### Multiplayer Services
+- [AGS P2P via Relay Server](https://docs.accelbyte.io/gaming-services/services/play/peer-to-peer-via-relay-server/)
+- [Configure P2P](https://docs.accelbyte.io/gaming-services/services/play/peer-to-peer-via-relay-server/configure-P2P/)
+- [AGS Session Service](https://docs.accelbyte.io/gaming-services/services/play/session/)
+- [AGS Matchmaking Service](https://docs.accelbyte.io/gaming-services/services/play/matchmaking/)
+- [Integrate Matchmaking (Unity)](https://docs.accelbyte.io/gaming-services/services/play/matchmaking/unity-integrating-matchmaking/)
+- [AGS Lobby & WebSockets](https://docs.accelbyte.io/gaming-services/services/play/lobby/lobby-websocket/)
+- [WebSocket Reconnection Strategy](https://docs.accelbyte.io/gaming-services/knowledge-base/sdk-tools/sdk-guides/websocket-reconnection-strategy/)
 
 ## Appendices
 
@@ -536,9 +1274,86 @@ async function headlessLogin() {
 | SCORE_002 | Score validation failed | Check score format |
 | LB_001 | Leaderboard unavailable | Display cached data |
 
+### Appendix D: Multiplayer Constants
+
+```javascript
+const MULTIPLAYER_CONFIG = {
+  // Matchmaking
+  MATCH_POOL: 'pong-1v1',
+  TICKET_TIMEOUT_SEC: 120,
+
+  // Session
+  SESSION_TEMPLATE: 'pong-p2p-session',
+  MIN_PLAYERS: 2,
+  MAX_PLAYERS: 2,
+
+  // Networking
+  TICK_RATE: 60,              // Game simulation rate (Hz)
+  SEND_RATE: 30,              // Network update rate (Hz)
+  INTERPOLATION_DELAY_MS: 50, // Buffer for smooth interpolation
+
+  // WebRTC DataChannel
+  DATA_CHANNEL_NAME: 'pong-game',
+  ORDERED: false,             // Unordered for lowest latency
+  MAX_RETRANSMITS: 0,         // No retransmits for real-time
+
+  // Reconnection
+  MAX_RECONNECT_ATTEMPTS: 3,
+  RECONNECT_DELAY_MS: 1000,
+
+  // Timeouts
+  SIGNALING_TIMEOUT_MS: 10000,
+  ICE_GATHERING_TIMEOUT_MS: 5000,
+  CONNECTION_TIMEOUT_MS: 15000
+};
+```
+
+### Appendix E: Multiplayer State Machine
+
+```
+┌─────────────┐
+│    IDLE     │
+└──────┬──────┘
+       │ Start Matchmaking
+       ▼
+┌─────────────┐
+│  QUEUING    │◄─────────────┐
+└──────┬──────┘              │
+       │ Match Found         │ Timeout/Cancel
+       ▼                     │
+┌─────────────┐              │
+│  MATCHED    │──────────────┘
+└──────┬──────┘
+       │ Join Session
+       ▼
+┌─────────────┐
+│  JOINING    │
+└──────┬──────┘
+       │ Session Joined
+       ▼
+┌─────────────┐
+│ CONNECTING  │ (WebRTC handshake)
+└──────┬──────┘
+       │ P2P Connected
+       ▼
+┌─────────────┐
+│  PLAYING    │◄─────────────┐
+└──────┬──────┘              │
+       │ Disconnect          │ Reconnected
+       ▼                     │
+┌─────────────┐              │
+│RECONNECTING │──────────────┘
+└──────┬──────┘
+       │ Failed / Game Over
+       ▼
+┌─────────────┐
+│  FINISHED   │
+└─────────────┘
+```
+
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-11-27
+**Document Version:** 2.0
+**Last Updated:** 2025-12-05
 **Author:** Technical Specification
-**Status:** Draft
+**Status:** Draft - Multiplayer Update
