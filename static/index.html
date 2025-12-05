@@ -13,6 +13,18 @@
     <p class="subtitle">AccelByte Gaming Services Demo</p>
   </header>
 
+  <!-- Mode Selection (above game container) -->
+  <div class="mode-selection" id="modeSelection">
+    <button class="btn mode-btn active" id="singlePlayerBtn" data-mode="single">
+      <span class="mode-icon">&#127918;</span>
+      Single Player
+    </button>
+    <button class="btn mode-btn" id="multiplayerBtn" data-mode="multi">
+      <span class="mode-icon">&#128101;</span>
+      Multiplayer
+    </button>
+  </div>
+
   <!-- Main Game Container -->
   <main class="game-container">
     <!-- Game Panel -->
@@ -20,30 +32,6 @@
       <!-- Canvas -->
       <div class="canvas-container">
         <canvas id="gameCanvas"></canvas>
-      </div>
-
-      <!-- Score Display -->
-      <div class="score-display">
-        <div class="score-item">
-          <div class="label" id="playerLabel">You</div>
-          <div class="value" id="playerScore">0</div>
-        </div>
-        <div class="score-item">
-          <div class="label" id="opponentLabel">CPU</div>
-          <div class="value" id="aiScore">0</div>
-        </div>
-      </div>
-
-      <!-- Mode Selection -->
-      <div class="mode-selection" id="modeSelection">
-        <button class="btn mode-btn active" id="singlePlayerBtn" data-mode="single">
-          <span class="mode-icon">&#127918;</span>
-          Single Player
-        </button>
-        <button class="btn mode-btn" id="multiplayerBtn" data-mode="multi">
-          <span class="mode-icon">&#128101;</span>
-          Multiplayer
-        </button>
       </div>
 
       <!-- Controls (Single Player) -->
@@ -164,10 +152,6 @@
 
       // DOM Elements
       const elements = {
-        playerScore: document.getElementById('playerScore'),
-        aiScore: document.getElementById('aiScore'),
-        playerLabel: document.getElementById('playerLabel'),
-        opponentLabel: document.getElementById('opponentLabel'),
         startBtn: document.getElementById('startBtn'),
         pauseBtn: document.getElementById('pauseBtn'),
         debugScoreBtn: document.getElementById('debugScoreBtn'),
@@ -297,9 +281,6 @@
         elements.singlePlayerControls.style.display = mode === 'single' ? 'flex' : 'none';
         elements.multiplayerControls.style.display = mode === 'multi' ? 'flex' : 'none';
 
-        // Update opponent label
-        elements.opponentLabel.textContent = mode === 'single' ? 'CPU' : 'Opponent';
-
         // Reset game when switching modes
         game.reset();
 
@@ -423,8 +404,6 @@
           showToast('Left the match', 'info');
           showMatchmakingPanel();
           game.reset();
-          elements.playerScore.textContent = '0';
-          elements.aiScore.textContent = '0';
         } catch (error) {
           console.error('Failed to leave match:', error);
           showMatchmakingPanel();
@@ -472,7 +451,6 @@
         console.log('[App] Session joined:', data);
         const opponentName = getOpponentDisplayName(data.opponent);
         showMatchFoundPanel(opponentName);
-        elements.opponentLabel.textContent = opponentName;
 
         if (data.opponent) {
           showToast(`Connected to ${opponentName}`, 'success');
@@ -484,7 +462,6 @@
       pongMultiplayer.onOpponentJoined = function(opponentInfo) {
         console.log('[App] Opponent joined:', opponentInfo);
         const opponentName = getOpponentDisplayName(opponentInfo);
-        elements.opponentLabel.textContent = opponentName;
         showMatchFoundPanel(opponentName);
         showToast(`${opponentName} joined!`, 'success');
       };
@@ -510,9 +487,6 @@
         // Reset to matchmaking if game was in progress
         if (currentMode === 'multi') {
           game.reset();
-          elements.playerScore.textContent = '0';
-          elements.aiScore.textContent = '0';
-          elements.opponentLabel.textContent = 'Opponent';
           showMatchmakingPanel();
         }
       };
@@ -523,9 +497,6 @@
 
         if (currentMode === 'multi') {
           game.reset();
-          elements.playerScore.textContent = '0';
-          elements.aiScore.textContent = '0';
-          elements.opponentLabel.textContent = 'Opponent';
           showMatchmakingPanel();
         }
       };
@@ -688,11 +659,6 @@
       }
 
       // Game event handlers
-      game.onScoreUpdate = function(playerScore, aiScore) {
-        elements.playerScore.textContent = playerScore;
-        elements.aiScore.textContent = aiScore;
-      };
-
       game.onPlayerScore = function() {
         incrementScore();
       };

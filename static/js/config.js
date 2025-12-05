@@ -9,8 +9,8 @@ const CONFIG = {
   BACKEND_URL: window.location.origin + '/' + window.location.pathname.split('/')[1],
 
   // Game Canvas
-  CANVAS_WIDTH: 800,
-  CANVAS_HEIGHT: 600,
+  CANVAS_WIDTH: 640,
+  CANVAS_HEIGHT: 480,
 
   // Paddle Configuration
   PADDLE_WIDTH: 10,
