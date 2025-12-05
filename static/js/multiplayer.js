@@ -129,7 +129,7 @@ class LobbyWebSocket {
         return;
       }
 
-      console.log('[Lobby] Received:', message.type || message.code, message);
+      console.log('[Lobby] Received message:', JSON.stringify(message, null, 2));
 
       // Emit based on message type
       const type = message.type || message.code;
@@ -194,6 +194,28 @@ class LobbyWebSocket {
 }
 
 class PongMultiplayer {
+  // Decode base64-encoded JSON payload from AGS notifications
+  static decodePayload(data) {
+    if (!data.payload) {
+      return data;
+    }
+
+    try {
+      const payloadStr = typeof data.payload === 'string' ? data.payload : JSON.stringify(data.payload);
+      // Try base64 decode first
+      const decoded = atob(payloadStr);
+      return JSON.parse(decoded);
+    } catch (e) {
+      // Not base64, try direct JSON parse
+      try {
+        return typeof data.payload === 'string' ? JSON.parse(data.payload) : data.payload;
+      } catch (e2) {
+        // Return original data if parsing fails
+        return data;
+      }
+    }
+  }
+
   constructor() {
     this.state = MultiplayerState.IDLE;
     this.lobby = null;
@@ -207,8 +229,14 @@ class PongMultiplayer {
 
     // Event handlers
     this.onStateChange = null;
-    this.onMatchFound = null;
+    this.onMatchmakingStarted = null; // Called when matchmaking ticket is accepted
+    this.onMatchFound = null;         // Called when a match is found
+    this.onMatchmakingExpired = null; // Called when matchmaking ticket expires
+    this.onMatchmakingCanceled = null;// Called when matchmaking is canceled
     this.onSessionJoined = null;
+    this.onOpponentJoined = null;     // Called when opponent joins the session
+    this.onOpponentLeft = null;       // Called when opponent leaves or is kicked
+    this.onKicked = null;             // Called when we are kicked from session
     this.onP2PConnected = null;
     this.onP2PDisconnected = null;
     this.onGameStateReceived = null;
@@ -264,22 +292,23 @@ class PongMultiplayer {
   }
 
   _setupLobbyHandlers() {
-    // Matchmaking notifications
-    this.lobby.on('matchmakingMatchFound', (data) => this._handleMatchFound(data));
-    this.lobby.on('OnMatchFound', (data) => this._handleMatchFound(data));
-
-    // Session notifications
-    this.lobby.on('sessionV2InvitedUserToGameSession', (data) => this._handleSessionInvite(data));
-    this.lobby.on('OnSessionInvited', (data) => this._handleSessionInvite(data));
-    this.lobby.on('sessionV2MembersChanged', (data) => this._handleSessionMembersChanged(data));
-    this.lobby.on('OnSessionMembersChanged', (data) => this._handleSessionMembersChanged(data));
-
-    // Signaling messages (for WebRTC)
-    this.lobby.on('sessionV2DSStatusChanged', (data) => this._handleSessionUpdate(data));
-    this.lobby.on('sessionV2AttributesChanged', (data) => this._handleSessionAttributesChanged(data));
+    // AGS Lobby sends two wrapper notification types with a 'topic' field for routing:
+    // - messageNotif: general notifications (e.g., OnMatchFound)
+    // - messageSessionNotif: session notifications (e.g., OnSessionJoined)
+    this.lobby.on('messageNotif', (data) => this._handleNotification(data));
+    this.lobby.on('messageSessionNotif', (data) => this._handleNotification(data));
 
     // Connection events
     this.lobby.on('disconnected', (data) => this._handleLobbyDisconnect(data));
+
+    // Catch-all for debugging unhandled messages
+    this.lobby.on('message', (data) => {
+      const type = data.type || data.code;
+      const handledTypes = ['connectNotif', 'heartbeat', 'disconnected', 'messageNotif', 'messageSessionNotif'];
+      if (type && !handledTypes.includes(type)) {
+        console.warn('[Multiplayer] Unhandled message type:', type, data);
+      }
+    });
   }
 
   async disconnectLobby() {
@@ -368,29 +397,187 @@ class PongMultiplayer {
     }
   }
 
-  _handleMatchFound(data) {
-    console.log('[Multiplayer] Match found:', data);
-    this._setState(MultiplayerState.MATCHED);
+  _handleMatchmakingStarted(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Matchmaking started:', payload);
 
-    if (this.onMatchFound) {
-      this.onMatchFound(data);
+    const ticketId = payload.TicketID || payload.ticketID || payload.ticketId;
+    if (ticketId) {
+      this.currentTicketId = ticketId;
     }
 
-    // Match found notification includes session info
-    // We'll receive a session invite separately
+    if (this.state !== MultiplayerState.QUEUING) {
+      this._setState(MultiplayerState.QUEUING);
+    }
+
+    if (this.onMatchmakingStarted) {
+      this.onMatchmakingStarted(payload);
+    }
+  }
+
+  _handleMatchFound(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Match found:', payload);
+
+    this._setState(MultiplayerState.MATCHED);
+    this.currentTicketId = null;
+
+    if (this.onMatchFound) {
+      this.onMatchFound(payload);
+    }
+    // Session joined notification (OnSessionJoined) follows separately
+  }
+
+  _handleMatchmakingExpired(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Matchmaking expired:', payload);
+
+    this.currentTicketId = null;
+    this._setState(MultiplayerState.LOBBY_CONNECTED);
+
+    if (this.onMatchmakingExpired) {
+      this.onMatchmakingExpired(payload);
+    }
+    if (this.onError) {
+      this.onError('Matchmaking timed out. Please try again.');
+    }
+  }
+
+  _handleMatchmakingCanceled(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Matchmaking canceled:', payload);
+
+    this.currentTicketId = null;
+
+    if (this.state === MultiplayerState.QUEUING || this.state === MultiplayerState.MATCHED) {
+      this._setState(MultiplayerState.LOBBY_CONNECTED);
+    }
+
+    if (this.onMatchmakingCanceled) {
+      this.onMatchmakingCanceled(payload);
+    }
+  }
+
+  // Unified notification handler - routes by topic field
+  _handleNotification(data) {
+    const topic = data.topic;
+    console.log('[Multiplayer] Notification:', topic, data);
+
+    switch (topic) {
+      // Matchmaking
+      case 'OnMatchFound':
+        this._handleMatchFound(data);
+        break;
+      case 'OnMatchmakingStarted':
+        this._handleMatchmakingStarted(data);
+        break;
+      case 'OnMatchmakingExpired':
+      case 'OnTicketExpired':
+        this._handleMatchmakingExpired(data);
+        break;
+      case 'OnMatchmakingCanceled':
+        this._handleMatchmakingCanceled(data);
+        break;
+
+      // Session
+      case 'OnSessionJoined':
+        this._handleSessionJoined(data);
+        break;
+      case 'OnSessionInvited':
+        this._handleSessionInvite(data);
+        break;
+      case 'OnSessionMembersChanged':
+        this._handleSessionMembersChanged(data);
+        break;
+      case 'OnSessionUserJoined':
+        this._handleUserJoinedSession(data);
+        break;
+      case 'OnSessionUserLeft':
+        this._handleUserLeftSession(data);
+        break;
+      case 'OnSessionUserKicked':
+        this._handleUserKickedFromSession(data);
+        break;
+      case 'OnSessionUpdated':
+        this._handleSessionUpdated(data);
+        break;
+
+      default:
+        console.log('[Multiplayer] Unhandled notification topic:', topic);
+    }
   }
 
   // Session Management
   _handleSessionInvite(data) {
-    console.log('[Multiplayer] Session invite received:', data);
-    const sessionId = data.sessionID || data.sessionId;
+    console.log('[Multiplayer] Session invite received');
+    const payload = PongMultiplayer.decodePayload(data);
+    const sessionId = payload.SessionID || payload.sessionID || payload.sessionId;
 
-    if (sessionId) {
-      this.joinSession(sessionId);
+    if (!sessionId) {
+      console.warn('[Multiplayer] Session invite missing sessionId');
+      return;
     }
+
+    if (this.currentSessionId === sessionId) {
+      console.log('[Multiplayer] Already in this session, ignoring invite');
+      return;
+    }
+
+    if (this.isInSession()) {
+      console.log('[Multiplayer] Already in a different session, ignoring invite');
+      return;
+    }
+
+    this.joinSession(sessionId);
+  }
+
+  // Handle OnSessionJoined - when matchmaker adds us to a session
+  _handleSessionJoined(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Session joined:', payload);
+
+    const sessionId = payload.SessionID || payload.sessionID || payload.sessionId;
+
+    if (!sessionId) {
+      console.warn('[Multiplayer] Session joined notification missing sessionId');
+      return;
+    }
+
+    if (this.currentSessionId === sessionId) {
+      return; // Already in this session
+    }
+
+    if (this.isInSession()) {
+      return; // Already in a different session
+    }
+
+    this.joinSession(sessionId);
   }
 
   async joinSession(sessionId) {
+    // Validate state
+    if (!sessionId) {
+      throw new Error('Session ID is required');
+    }
+
+    if (this.state === MultiplayerState.JOINING_SESSION) {
+      console.log('[Multiplayer] Already joining a session');
+      return;
+    }
+
+    // If already in this session, just refresh info
+    if (this.currentSessionId === sessionId && this.state === MultiplayerState.IN_SESSION) {
+      console.log('[Multiplayer] Already in this session, refreshing info');
+      await this.getSession(sessionId);
+      return;
+    }
+
+    // If in a different session, leave first
+    if (this.currentSessionId && this.currentSessionId !== sessionId) {
+      console.log('[Multiplayer] Leaving current session before joining new one');
+      await this.leaveSession();
+    }
+
     this._setState(MultiplayerState.JOINING_SESSION);
     this.currentSessionId = sessionId;
 
@@ -407,45 +594,38 @@ class PongMultiplayer {
         }
       );
 
+      // Handle specific error codes
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.errorMessage || `Join session failed: ${response.status}`);
+        const errorCode = errorData.errorCode || response.status;
+        const errorMessage = errorData.errorMessage || `Join session failed: ${response.status}`;
+
+        // Handle common session join errors
+        switch (errorCode) {
+          case 20025: // Session full
+            throw new Error('Session is full');
+          case 20040: // Already in session
+            console.log('[Multiplayer] Already in session, fetching session info');
+            const session = await this.getSession(sessionId);
+            this._onSessionJoinSuccess(session);
+            return;
+          case 20041: // Session not found
+            throw new Error('Session not found or has expired');
+          case 20042: // Session not joinable
+            throw new Error('Session is not accepting new players');
+          default:
+            throw new Error(errorMessage);
+        }
       }
 
       const session = await response.json();
-      this.currentSession = session;
-
-      // Determine if we're the host (session leader)
-      this.isHost = session.leaderId === pongAPI.userId;
-
-      // Find opponent
-      const members = session.members || [];
-      this.opponentInfo = members.find(m => m.id !== pongAPI.userId);
-
-      console.log('[Multiplayer] Joined session:', {
-        sessionId: session.id,
-        isHost: this.isHost,
-        opponent: this.opponentInfo
-      });
-
-      this._setState(MultiplayerState.IN_SESSION);
-
-      if (this.onSessionJoined) {
-        this.onSessionJoined({
-          session: session,
-          isHost: this.isHost,
-          opponent: this.opponentInfo
-        });
-      }
-
-      // If both players are in, start P2P connection
-      if (members.length >= 2) {
-        this._initiateP2PConnection();
-      }
+      this._onSessionJoinSuccess(session);
 
     } catch (error) {
       console.error('[Multiplayer] Failed to join session:', error);
+      this._cleanupSession();
       this._setState(MultiplayerState.ERROR);
+
       if (this.onError) {
         this.onError('Failed to join session: ' + error.message);
       }
@@ -453,13 +633,44 @@ class PongMultiplayer {
     }
   }
 
-  _handleSessionMembersChanged(data) {
-    console.log('[Multiplayer] Session members changed:', data);
+  // Handle successful session join
+  _onSessionJoinSuccess(session) {
+    this.currentSession = session;
 
-    // Update opponent info if new member joined
-    if (this.state === MultiplayerState.IN_SESSION) {
-      const members = data.members || [];
-      this.opponentInfo = members.find(m => m.id !== pongAPI.userId);
+    // Update session info (host status, opponent)
+    this._updateSessionInfo(session);
+
+    console.log('[Multiplayer] Joined session:', {
+      sessionId: session.id,
+      isHost: this.isHost,
+      opponent: this.opponentInfo,
+      memberCount: (session.members || []).length
+    });
+
+    this._setState(MultiplayerState.IN_SESSION);
+
+    if (this.onSessionJoined) {
+      this.onSessionJoined({
+        session: session,
+        isHost: this.isHost,
+        opponent: this.opponentInfo
+      });
+    }
+
+    // If both players are in, start P2P connection
+    const members = session.members || [];
+    if (members.length >= CONFIG.MULTIPLAYER.MIN_PLAYERS) {
+      this._initiateP2PConnection();
+    }
+  }
+
+  _handleSessionMembersChanged(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Session members changed:', payload);
+
+    if (this.state === MultiplayerState.IN_SESSION || this.state === MultiplayerState.CONNECTING_P2P || this.state === MultiplayerState.PLAYING) {
+      const members = payload.Members || payload.members || [];
+      this.opponentInfo = members.find(m => (m.ID || m.id) !== pongAPI.userId);
 
       if (members.length >= 2 && !this.peerConnection) {
         this._initiateP2PConnection();
@@ -467,24 +678,126 @@ class PongMultiplayer {
     }
   }
 
-  _handleSessionUpdate(data) {
-    console.log('[Multiplayer] Session update:', data);
+  _handleUserJoinedSession(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] User joined session:', payload);
+
+    const joinedUserId = payload.UserID || payload.userId || payload.ID || payload.id;
+
+    if (joinedUserId === pongAPI.userId) {
+      return; // Ignore our own join
+    }
+
+    this.opponentInfo = {
+      id: joinedUserId,
+      platformId: payload.PlatformID || payload.platformId,
+      platformUserId: payload.PlatformUserID || payload.platformUserId
+    };
+
+    // Notify UI
+    if (this.onOpponentJoined) {
+      this.onOpponentJoined(this.opponentInfo);
+    }
+
+    // If we're waiting for opponent and now have one, initiate P2P
+    if ((this.state === MultiplayerState.IN_SESSION || this.state === MultiplayerState.JOINING_SESSION) && !this.peerConnection) {
+      this._initiateP2PConnection();
+    }
   }
 
-  _handleSessionAttributesChanged(data) {
-    console.log('[Multiplayer] Session attributes changed:', data);
-    // Handle WebRTC signaling messages stored in session attributes
-    this._processSignalingFromAttributes(data.attributes);
+  _handleUserLeftSession(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] User left session:', payload);
+
+    const leftUserId = payload.UserID || payload.userId || payload.ID || payload.id;
+
+    if (leftUserId === pongAPI.userId) {
+      return; // Ignore our own leave
+    }
+
+    if (this.opponentInfo && this.opponentInfo.id === leftUserId) {
+      if (this.onOpponentLeft) {
+        this.onOpponentLeft({ userId: leftUserId, reason: 'left' });
+      }
+      this._cleanupP2P();
+      this.opponentInfo = null;
+      this._setState(this.state === MultiplayerState.PLAYING ? MultiplayerState.FINISHED : MultiplayerState.IN_SESSION);
+    }
   }
 
-  async leaveSession() {
+  _handleUserKickedFromSession(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] User kicked from session:', payload);
+
+    const kickedUserId = payload.UserID || payload.userId || payload.ID || payload.id;
+
+    if (kickedUserId === pongAPI.userId) {
+      if (this.onKicked) {
+        this.onKicked({ reason: payload.Reason || payload.reason || 'kicked' });
+      }
+      this._cleanupSession();
+      this._setState(MultiplayerState.LOBBY_CONNECTED);
+      return;
+    }
+
+    if (this.opponentInfo && this.opponentInfo.id === kickedUserId) {
+      if (this.onOpponentLeft) {
+        this.onOpponentLeft({ userId: kickedUserId, reason: 'kicked' });
+      }
+
+      this._cleanupP2P();
+      this.opponentInfo = null;
+
+      if (this.state === MultiplayerState.PLAYING) {
+        this._setState(MultiplayerState.FINISHED);
+      }
+    }
+  }
+
+  _handleSessionUpdated(data) {
+    const payload = PongMultiplayer.decodePayload(data);
+    console.log('[Multiplayer] Session updated:', payload);
+
+    if (!this.currentSessionId || !this.currentSession) {
+      return;
+    }
+
+    // Merge updated data
+    const attributes = payload.Attributes || payload.attributes;
+    const members = payload.Members || payload.members;
+
+    if (attributes) {
+      this.currentSession.attributes = { ...this.currentSession.attributes, ...attributes };
+      this._processSignalingFromAttributes(attributes);
+    }
+    if (members) {
+      this.currentSession.members = members;
+    }
+  }
+
+  async leaveSession(force = false) {
     if (!this.currentSessionId) {
       return;
     }
 
+    const sessionId = this.currentSessionId;
+    const wasPlaying = this.state === MultiplayerState.PLAYING;
+
+    // Notify opponent if we're leaving during a game
+    if (wasPlaying && this.dataChannel && this.dataChannel.readyState === 'open') {
+      try {
+        this.sendGameState({ type: 'player_left', reason: 'voluntary' });
+      } catch (e) {
+        // Ignore errors when sending leave message
+      }
+    }
+
+    // Clean up local state first to prevent race conditions
+    this._cleanupSession();
+
     try {
-      await fetch(
-        `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${this.currentSessionId}/leave`,
+      const response = await fetch(
+        `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}/leave`,
         {
           method: 'DELETE',
           headers: {
@@ -493,17 +806,120 @@ class PongMultiplayer {
         }
       );
 
+      if (!response.ok && !force) {
+        const errorData = await response.json().catch(() => ({}));
+        console.warn('[Multiplayer] Leave session response:', errorData);
+      }
+
       console.log('[Multiplayer] Left session');
 
     } catch (error) {
       console.error('[Multiplayer] Failed to leave session:', error);
+      // Continue cleanup even if API call fails
     }
 
+    this._setState(MultiplayerState.LOBBY_CONNECTED);
+  }
+
+  // Force leave session without waiting for API response
+  forceLeaveSession() {
+    console.log('[Multiplayer] Force leaving session');
+    this._cleanupSession();
+    this._setState(MultiplayerState.LOBBY_CONNECTED);
+
+    // Try to leave via API in background (best effort)
+    if (this.currentSessionId) {
+      this.leaveSession(true).catch(() => {});
+    }
+  }
+
+  // Fetch current session details
+  async getSession(sessionId = null) {
+    const targetSessionId = sessionId || this.currentSessionId;
+
+    if (!targetSessionId) {
+      throw new Error('No session ID provided');
+    }
+
+    try {
+      const response = await fetch(
+        `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${targetSessionId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${pongAPI.accessToken}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.errorMessage || `Failed to get session: ${response.status}`);
+      }
+
+      const session = await response.json();
+
+      // Update current session if fetching our active session
+      if (targetSessionId === this.currentSessionId) {
+        this.currentSession = session;
+        this._updateSessionInfo(session);
+      }
+
+      return session;
+
+    } catch (error) {
+      console.error('[Multiplayer] Failed to get session:', error);
+      throw error;
+    }
+  }
+
+  // Update session info from fetched data
+  _updateSessionInfo(session) {
+    // Update host status
+    this.isHost = session.leaderId === pongAPI.userId;
+
+    // Update opponent info
+    const members = session.members || [];
+    this.opponentInfo = members.find(m => m.id !== pongAPI.userId) || null;
+
+    console.log('[Multiplayer] Session info updated:', {
+      sessionId: session.id,
+      isHost: this.isHost,
+      opponent: this.opponentInfo,
+      memberCount: members.length
+    });
+  }
+
+  // Get current role (host or guest)
+  getRole() {
+    return this.isHost ? 'host' : 'guest';
+  }
+
+  // Check if currently in a session
+  isInSession() {
+    return this.currentSessionId !== null &&
+           (this.state === MultiplayerState.IN_SESSION ||
+            this.state === MultiplayerState.CONNECTING_P2P ||
+            this.state === MultiplayerState.PLAYING);
+  }
+
+  // Get session info
+  getSessionInfo() {
+    return {
+      sessionId: this.currentSessionId,
+      session: this.currentSession,
+      isHost: this.isHost,
+      opponent: this.opponentInfo,
+      role: this.getRole()
+    };
+  }
+
+  // Clean up session state (internal helper)
+  _cleanupSession() {
     this._cleanupP2P();
     this.currentSessionId = null;
     this.currentSession = null;
     this.opponentInfo = null;
-    this._setState(MultiplayerState.LOBBY_CONNECTED);
+    this.isHost = false;
   }
 
   // TURN Credentials
@@ -597,17 +1013,66 @@ class PongMultiplayer {
       };
 
       this.peerConnection.onconnectionstatechange = () => {
-        console.log('[Multiplayer] Connection state:', this.peerConnection.connectionState);
+        const connectionState = this.peerConnection?.connectionState;
+        console.log('[Multiplayer] Connection state:', connectionState);
 
-        if (this.peerConnection.connectionState === 'connected') {
-          this._setState(MultiplayerState.PLAYING);
-          if (this.onP2PConnected) {
-            this.onP2PConnected();
-          }
-        } else if (this.peerConnection.connectionState === 'failed' ||
-                   this.peerConnection.connectionState === 'disconnected') {
-          if (this.onP2PDisconnected) {
-            this.onP2PDisconnected();
+        switch (connectionState) {
+          case 'connected':
+            this._setState(MultiplayerState.PLAYING);
+            if (this.onP2PConnected) {
+              this.onP2PConnected();
+            }
+            break;
+
+          case 'disconnected':
+            console.log('[Multiplayer] P2P connection disconnected, waiting for recovery...');
+            // Brief disconnection - may recover automatically
+            // Keep state as PLAYING for a moment to allow ICE restart
+            if (this.onP2PDisconnected) {
+              this.onP2PDisconnected({ recoverable: true });
+            }
+            break;
+
+          case 'failed':
+            console.log('[Multiplayer] P2P connection failed');
+            if (this.onP2PDisconnected) {
+              this.onP2PDisconnected({ recoverable: false });
+            }
+
+            // Connection failed - opponent likely disconnected
+            if (this.state === MultiplayerState.PLAYING) {
+              this._setState(MultiplayerState.FINISHED);
+              if (this.onOpponentLeft) {
+                this.onOpponentLeft({
+                  userId: this.opponentInfo?.id,
+                  reason: 'connection_failed'
+                });
+              }
+            } else {
+              this._setState(MultiplayerState.ERROR);
+            }
+            break;
+
+          case 'closed':
+            console.log('[Multiplayer] P2P connection closed');
+            // Clean close - already handled elsewhere
+            break;
+        }
+      };
+
+      // Also monitor ICE connection state for faster detection
+      this.peerConnection.oniceconnectionstatechange = () => {
+        const iceState = this.peerConnection?.iceConnectionState;
+        console.log('[Multiplayer] ICE connection state:', iceState);
+
+        if (iceState === 'failed') {
+          console.log('[Multiplayer] ICE connection failed');
+          // ICE failed before connection established
+          if (this.state === MultiplayerState.CONNECTING_P2P) {
+            this._setState(MultiplayerState.ERROR);
+            if (this.onError) {
+              this.onError('Failed to establish peer connection');
+            }
           }
         }
       };

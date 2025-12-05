@@ -283,15 +283,15 @@ sequenceDiagram
     B->>M: Create match ticket
     M->>M: Find match
     M->>L: Match found notification
-    L->>A: MatchmakingV2MatchFound
-    L->>B: MatchmakingV2MatchFound
+    L->>A: messageNotif (topic: OnMatchFound)
+    L->>B: messageNotif (topic: OnMatchFound)
 
-    Note over A,B: 3. Session Creation
+    Note over A,B: 3. Session Creation (Auto-join enabled)
     S->>S: Create P2P game session
-    L->>A: SessionV2InvitedUserToGameSession
-    L->>B: SessionV2InvitedUserToGameSession
-    A->>S: Join session
-    B->>S: Join session
+    L->>A: messageSessionNotif (topic: OnSessionJoined)
+    L->>B: messageSessionNotif (topic: OnSessionJoined)
+    A->>S: Join session (fetch details)
+    B->>S: Join session (fetch details)
 
     Note over A,B: 4. P2P Connection Setup
     A->>T: Get TURN servers
@@ -299,12 +299,11 @@ sequenceDiagram
     B->>T: Get TURN servers
     B->>T: Get TURN credentials
 
-    Note over A,B: 5. WebRTC Handshake via Lobby
-    A->>L: Send SDP offer
-    L->>B: Relay SDP offer
-    B->>L: Send SDP answer
-    L->>A: Relay SDP answer
-    A->>B: ICE candidates exchange
+    Note over A,B: 5. WebRTC Handshake via Session Attributes
+    A->>S: PATCH session (signaling offer)
+    L->>B: messageSessionNotif (topic: OnSessionUpdated)
+    B->>S: PATCH session (signaling answer)
+    L->>A: messageSessionNotif (topic: OnSessionUpdated)
     A-->>B: RTCDataChannel established
 
     Note over A,B: 6. Game Play
@@ -426,6 +425,97 @@ class LobbyWebSocket {
 }
 ```
 
+#### AGS Notification Format
+
+AGS Lobby sends notifications wrapped in two message types with a `topic` field for routing:
+
+| Message Type | Purpose | Example Topics |
+|-------------|---------|----------------|
+| `messageNotif` | General notifications | `OnMatchFound`, `OnMatchmakingStarted` |
+| `messageSessionNotif` | Session notifications | `OnSessionJoined`, `OnSessionUserJoined` |
+
+**Message Structure:**
+```
+type: messageNotif
+topic: OnMatchFound
+payload: <base64-encoded-json>
+sentAt: 2025-12-05T11:52:59Z
+sequenceID: 1764935572
+sequenceNumber: 3
+```
+
+**Payload Decoding:**
+The `payload` field contains base64-encoded JSON. Decode it to access the actual data:
+
+```javascript
+function decodePayload(data) {
+  if (!data.payload) return data;
+  try {
+    const decoded = atob(data.payload);
+    return JSON.parse(decoded);
+  } catch (e) {
+    return data;
+  }
+}
+
+// Example decoded OnMatchFound payload:
+{
+  "ID": "8fea9aaa9d5e4620a9de0a2d0bb287e9",
+  "Namespace": "your-namespace",
+  "MatchPool": "pong-1v1",
+  "Teams": [{"UserIDs": ["user-id-here"]}],
+  "Tickets": [{"TicketID": "ticket-id-here"}]
+}
+
+// Example decoded OnSessionJoined payload:
+{
+  "SessionID": "8fea9aaa9d5e4620a9de0a2d0bb287e9",
+  "Members": [{
+    "ID": "user-id-here",
+    "Status": "JOINED",
+    "StatusV2": "JOINED"
+  }],
+  "TextChat": false
+}
+```
+
+**Notification Handler Pattern:**
+```javascript
+// Register handlers for the two wrapper message types
+lobby.on('messageNotif', (data) => handleNotification(data));
+lobby.on('messageSessionNotif', (data) => handleNotification(data));
+
+// Route by topic field
+function handleNotification(data) {
+  const payload = decodePayload(data);
+
+  switch (data.topic) {
+    case 'OnMatchFound':
+      handleMatchFound(payload);
+      break;
+    case 'OnSessionJoined':
+      handleSessionJoined(payload);
+      break;
+    // ... other topics
+  }
+}
+```
+
+**Known Topics:**
+| Topic | Description |
+|-------|-------------|
+| `OnMatchFound` | Match found, session being created |
+| `OnMatchmakingStarted` | Matchmaking ticket accepted |
+| `OnMatchmakingExpired` | Matchmaking ticket timed out |
+| `OnMatchmakingCanceled` | Matchmaking was canceled |
+| `OnSessionJoined` | User added to a session |
+| `OnSessionInvited` | User invited to a session |
+| `OnSessionUserJoined` | Another user joined the session |
+| `OnSessionUserLeft` | Another user left the session |
+| `OnSessionUserKicked` | A user was kicked from session |
+| `OnSessionMembersChanged` | Session membership changed |
+| `OnSessionUpdated` | Session attributes changed |
+
 #### Lobby WebSocket Keepalive
 
 The AGS Lobby server uses a dual keepalive mechanism:
@@ -454,15 +544,25 @@ messageID: <unique-id>
 #### Matchmaking Flow
 
 ```javascript
-// Subscribe to lobby notifications
-lobby.on('matchmakingMatchFound', (data) => {
-  console.log('Match found:', data);
-});
+// Subscribe to lobby notifications (both wrapper types)
+lobby.on('messageNotif', handleNotification);
+lobby.on('messageSessionNotif', handleNotification);
 
-lobby.on('sessionV2InvitedUserToGameSession', (data) => {
-  console.log('Session invite:', data.sessionID);
-  joinSession(data.sessionID);
-});
+function handleNotification(data) {
+  const payload = decodePayload(data); // Base64 decode
+
+  switch (data.topic) {
+    case 'OnMatchFound':
+      console.log('Match found:', payload);
+      // Session will be created automatically, wait for OnSessionJoined
+      break;
+
+    case 'OnSessionJoined':
+      console.log('Session joined:', payload.SessionID);
+      joinSession(payload.SessionID);
+      break;
+  }
+}
 
 // Create matchmaking ticket via REST API
 async function startMatchmaking() {
@@ -1353,7 +1453,7 @@ const MULTIPLAYER_CONFIG = {
 
 ---
 
-**Document Version:** 2.0
+**Document Version:** 2.1
 **Last Updated:** 2025-12-05
 **Author:** Technical Specification
-**Status:** Draft - Multiplayer Update
+**Status:** Draft - Multiplayer Update (Notification format verified)

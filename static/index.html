@@ -25,20 +25,65 @@
       <!-- Score Display -->
       <div class="score-display">
         <div class="score-item">
-          <div class="label">You</div>
+          <div class="label" id="playerLabel">You</div>
           <div class="value" id="playerScore">0</div>
         </div>
         <div class="score-item">
-          <div class="label">CPU</div>
+          <div class="label" id="opponentLabel">CPU</div>
           <div class="value" id="aiScore">0</div>
         </div>
       </div>
 
-      <!-- Controls -->
-      <div class="controls">
+      <!-- Mode Selection -->
+      <div class="mode-selection" id="modeSelection">
+        <button class="btn mode-btn active" id="singlePlayerBtn" data-mode="single">
+          <span class="mode-icon">&#127918;</span>
+          Single Player
+        </button>
+        <button class="btn mode-btn" id="multiplayerBtn" data-mode="multi">
+          <span class="mode-icon">&#128101;</span>
+          Multiplayer
+        </button>
+      </div>
+
+      <!-- Controls (Single Player) -->
+      <div class="controls" id="singlePlayerControls">
         <button class="btn btn-primary" id="startBtn">Start Game</button>
         <button class="btn btn-secondary" id="pauseBtn" disabled>Pause</button>
         <button class="btn btn-secondary" id="debugScoreBtn" style="display: none; background: #ff6b6b;">+1 Score (Debug)</button>
+      </div>
+
+      <!-- Controls (Multiplayer) -->
+      <div class="controls multiplayer-controls" id="multiplayerControls" style="display: none;">
+        <div class="matchmaking-panel" id="matchmakingPanel">
+          <button class="btn btn-primary btn-large" id="findMatchBtn">
+            <span class="btn-icon">&#128269;</span>
+            Find Match
+          </button>
+        </div>
+        <div class="queue-panel" id="queuePanel" style="display: none;">
+          <div class="queue-status">
+            <div class="queue-spinner"></div>
+            <div class="queue-info">
+              <span class="queue-text">Finding opponent...</span>
+              <span class="queue-timer" id="queueTimer">0:00</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" id="cancelMatchBtn">Cancel</button>
+        </div>
+        <div class="match-found-panel" id="matchFoundPanel" style="display: none;">
+          <div class="match-found-status">
+            <span class="match-found-icon">&#9989;</span>
+            <span class="match-found-text">Match Found!</span>
+          </div>
+          <div class="opponent-info" id="opponentInfo">
+            <span>Connecting to opponent...</span>
+          </div>
+          <button class="btn btn-secondary" id="leaveSessionBtn">Leave Session</button>
+        </div>
+        <div class="multiplayer-game-controls" id="multiplayerGameControls" style="display: none;">
+          <button class="btn btn-secondary" id="leaveMatchBtn">Leave Match</button>
+        </div>
       </div>
     </section>
 
@@ -121,6 +166,8 @@
       const elements = {
         playerScore: document.getElementById('playerScore'),
         aiScore: document.getElementById('aiScore'),
+        playerLabel: document.getElementById('playerLabel'),
+        opponentLabel: document.getElementById('opponentLabel'),
         startBtn: document.getElementById('startBtn'),
         pauseBtn: document.getElementById('pauseBtn'),
         debugScoreBtn: document.getElementById('debugScoreBtn'),
@@ -134,12 +181,35 @@
         toastContainer: document.getElementById('toastContainer'),
         lobbyStatusContainer: document.getElementById('lobbyStatusContainer'),
         lobbyStatusIndicator: document.getElementById('lobbyStatusIndicator'),
-        lobbyStatusText: document.getElementById('lobbyStatusText')
+        lobbyStatusText: document.getElementById('lobbyStatusText'),
+        // Mode selection
+        modeSelection: document.getElementById('modeSelection'),
+        singlePlayerBtn: document.getElementById('singlePlayerBtn'),
+        multiplayerBtn: document.getElementById('multiplayerBtn'),
+        // Controls
+        singlePlayerControls: document.getElementById('singlePlayerControls'),
+        multiplayerControls: document.getElementById('multiplayerControls'),
+        // Matchmaking
+        matchmakingPanel: document.getElementById('matchmakingPanel'),
+        findMatchBtn: document.getElementById('findMatchBtn'),
+        queuePanel: document.getElementById('queuePanel'),
+        queueTimer: document.getElementById('queueTimer'),
+        cancelMatchBtn: document.getElementById('cancelMatchBtn'),
+        matchFoundPanel: document.getElementById('matchFoundPanel'),
+        opponentInfo: document.getElementById('opponentInfo'),
+        multiplayerGameControls: document.getElementById('multiplayerGameControls'),
+        leaveMatchBtn: document.getElementById('leaveMatchBtn'),
+        leaveSessionBtn: document.getElementById('leaveSessionBtn')
       };
 
       // Initialize game
       const game = new PongGame('gameCanvas');
       let isSubmittingScore = false;
+
+      // Game mode state
+      let currentMode = 'single'; // 'single' or 'multi'
+      let queueTimerInterval = null;
+      let queueStartTime = null;
 
       // Toast notification system
       function showToast(message, type = 'info') {
@@ -213,15 +283,285 @@
         }
       }
 
+      // Mode switching
+      function switchMode(mode) {
+        if (currentMode === mode) return;
+
+        currentMode = mode;
+
+        // Update mode button states
+        elements.singlePlayerBtn.classList.toggle('active', mode === 'single');
+        elements.multiplayerBtn.classList.toggle('active', mode === 'multi');
+
+        // Show/hide appropriate controls
+        elements.singlePlayerControls.style.display = mode === 'single' ? 'flex' : 'none';
+        elements.multiplayerControls.style.display = mode === 'multi' ? 'flex' : 'none';
+
+        // Update opponent label
+        elements.opponentLabel.textContent = mode === 'single' ? 'CPU' : 'Opponent';
+
+        // Reset game when switching modes
+        game.reset();
+
+        // Reset multiplayer UI
+        if (mode === 'multi') {
+          showMatchmakingPanel();
+        }
+
+        console.log(`[App] Switched to ${mode} mode`);
+      }
+
+      // Matchmaking UI helpers
+      function showMatchmakingPanel() {
+        elements.matchmakingPanel.style.display = 'flex';
+        elements.queuePanel.style.display = 'none';
+        elements.matchFoundPanel.style.display = 'none';
+        elements.multiplayerGameControls.style.display = 'none';
+        elements.findMatchBtn.disabled = false;
+        stopQueueTimer();
+      }
+
+      function showQueuePanel() {
+        elements.matchmakingPanel.style.display = 'none';
+        elements.queuePanel.style.display = 'flex';
+        elements.matchFoundPanel.style.display = 'none';
+        elements.multiplayerGameControls.style.display = 'none';
+        startQueueTimer();
+      }
+
+      function showMatchFoundPanel(opponentName) {
+        elements.matchmakingPanel.style.display = 'none';
+        elements.queuePanel.style.display = 'none';
+        elements.matchFoundPanel.style.display = 'flex';
+        elements.multiplayerGameControls.style.display = 'none';
+        elements.opponentInfo.innerHTML = opponentName
+          ? `<span>Playing against <strong>${opponentName}</strong></span>`
+          : '<span>Connecting to opponent...</span>';
+        stopQueueTimer();
+      }
+
+      function showMultiplayerGameControls() {
+        elements.matchmakingPanel.style.display = 'none';
+        elements.queuePanel.style.display = 'none';
+        elements.matchFoundPanel.style.display = 'none';
+        elements.multiplayerGameControls.style.display = 'flex';
+        stopQueueTimer();
+      }
+
+      // Queue timer
+      function startQueueTimer() {
+        queueStartTime = Date.now();
+        elements.queueTimer.textContent = '0:00';
+
+        queueTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - queueStartTime) / 1000);
+          const minutes = Math.floor(elapsed / 60);
+          const seconds = elapsed % 60;
+          elements.queueTimer.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }, 1000);
+      }
+
+      function stopQueueTimer() {
+        if (queueTimerInterval) {
+          clearInterval(queueTimerInterval);
+          queueTimerInterval = null;
+        }
+        queueStartTime = null;
+      }
+
+      // Matchmaking handlers
+      async function handleFindMatch() {
+        if (!pongAPI.isLoggedIn()) {
+          showToast('Please log in first', 'error');
+          return;
+        }
+
+        elements.findMatchBtn.disabled = true;
+
+        try {
+          // Ensure lobby is connected
+          const mpState = pongMultiplayer.getState();
+          if (mpState !== 'lobby_connected' && mpState !== 'idle') {
+            if (mpState === 'error') {
+              await connectToLobby();
+            } else {
+              showToast('Please wait for lobby connection', 'info');
+              elements.findMatchBtn.disabled = false;
+              return;
+            }
+          }
+
+          if (pongMultiplayer.getState() === 'idle') {
+            await connectToLobby();
+          }
+
+          showQueuePanel();
+          await pongMultiplayer.startMatchmaking();
+          showToast('Searching for opponent...', 'info');
+
+        } catch (error) {
+          console.error('Failed to start matchmaking:', error);
+          showToast(`Matchmaking failed: ${error.message}`, 'error');
+          showMatchmakingPanel();
+        }
+      }
+
+      async function handleCancelMatch() {
+        try {
+          await pongMultiplayer.cancelMatchmaking();
+          showToast('Matchmaking cancelled', 'info');
+          showMatchmakingPanel();
+        } catch (error) {
+          console.error('Failed to cancel matchmaking:', error);
+          showMatchmakingPanel();
+        }
+      }
+
+      async function handleLeaveMatch() {
+        try {
+          await pongMultiplayer.leaveSession();
+          showToast('Left the match', 'info');
+          showMatchmakingPanel();
+          game.reset();
+          elements.playerScore.textContent = '0';
+          elements.aiScore.textContent = '0';
+        } catch (error) {
+          console.error('Failed to leave match:', error);
+          showMatchmakingPanel();
+        }
+      }
+
       // Setup multiplayer state change handler
       pongMultiplayer.onStateChange = function(newState, oldState) {
         console.log(`[App] Multiplayer state: ${oldState} -> ${newState}`);
         updateLobbyStatusUI(newState);
+
+        // Update matchmaking UI based on state
+        if (currentMode !== 'multi') return;
+
+        switch (newState) {
+          case 'idle':
+          case 'lobby_connected':
+            showMatchmakingPanel();
+            break;
+          case 'queuing':
+            showQueuePanel();
+            break;
+          case 'matched':
+          case 'joining_session':
+          case 'in_session':
+          case 'connecting_p2p':
+            showMatchFoundPanel(null);
+            break;
+          case 'playing':
+            showMultiplayerGameControls();
+            break;
+          case 'finished':
+          case 'error':
+            showMatchmakingPanel();
+            break;
+        }
+      };
+
+      pongMultiplayer.onMatchFound = function(data) {
+        console.log('[App] Match found:', data);
+        showToast('Match found!', 'success');
+      };
+
+      pongMultiplayer.onSessionJoined = function(data) {
+        console.log('[App] Session joined:', data);
+        const opponentName = getOpponentDisplayName(data.opponent);
+        showMatchFoundPanel(opponentName);
+        elements.opponentLabel.textContent = opponentName;
+
+        if (data.opponent) {
+          showToast(`Connected to ${opponentName}`, 'success');
+        } else {
+          showToast('Waiting for opponent...', 'info');
+        }
+      };
+
+      pongMultiplayer.onOpponentJoined = function(opponentInfo) {
+        console.log('[App] Opponent joined:', opponentInfo);
+        const opponentName = getOpponentDisplayName(opponentInfo);
+        elements.opponentLabel.textContent = opponentName;
+        showMatchFoundPanel(opponentName);
+        showToast(`${opponentName} joined!`, 'success');
+      };
+
+      pongMultiplayer.onOpponentLeft = function(data) {
+        console.log('[App] Opponent left:', data);
+        const reason = data.reason || 'left';
+
+        let message;
+        switch (reason) {
+          case 'kicked':
+            message = 'Opponent was removed from the match';
+            break;
+          case 'connection_failed':
+            message = 'Lost connection to opponent';
+            break;
+          default:
+            message = 'Opponent left the match';
+        }
+
+        showToast(message, 'warning');
+
+        // Reset to matchmaking if game was in progress
+        if (currentMode === 'multi') {
+          game.reset();
+          elements.playerScore.textContent = '0';
+          elements.aiScore.textContent = '0';
+          elements.opponentLabel.textContent = 'Opponent';
+          showMatchmakingPanel();
+        }
+      };
+
+      pongMultiplayer.onKicked = function(data) {
+        console.log('[App] Kicked from session:', data);
+        showToast('You were removed from the match', 'error');
+
+        if (currentMode === 'multi') {
+          game.reset();
+          elements.playerScore.textContent = '0';
+          elements.aiScore.textContent = '0';
+          elements.opponentLabel.textContent = 'Opponent';
+          showMatchmakingPanel();
+        }
+      };
+
+      pongMultiplayer.onP2PConnected = function() {
+        console.log('[App] P2P connected');
+        showMultiplayerGameControls();
+        showToast('Game starting!', 'success');
+        // TODO: Start multiplayer game
+      };
+
+      pongMultiplayer.onP2PDisconnected = function(data) {
+        console.log('[App] P2P disconnected:', data);
+
+        if (data?.recoverable) {
+          showToast('Connection unstable...', 'warning');
+        } else {
+          showToast('Connection lost', 'error');
+          showMatchmakingPanel();
+        }
       };
 
       pongMultiplayer.onError = function(message) {
         showToast(message, 'error');
+        if (currentMode === 'multi') {
+          showMatchmakingPanel();
+        }
       };
+
+      // Helper to get display name for opponent
+      function getOpponentDisplayName(opponent) {
+        if (!opponent) return 'Opponent';
+        if (opponent.displayName) return opponent.displayName;
+        if (opponent.id) return `Player_${opponent.id.substring(0, 6)}`;
+        return 'Opponent';
+      }
 
       // Render leaderboard
       function renderLeaderboard(data) {
@@ -411,6 +751,16 @@
         pongAPI.leaderboardCacheTime = null;
         loadLeaderboard();
       });
+
+      // Mode selection event listeners
+      elements.singlePlayerBtn.addEventListener('click', () => switchMode('single'));
+      elements.multiplayerBtn.addEventListener('click', () => switchMode('multi'));
+
+      // Matchmaking event listeners
+      elements.findMatchBtn.addEventListener('click', handleFindMatch);
+      elements.cancelMatchBtn.addEventListener('click', handleCancelMatch);
+      elements.leaveMatchBtn.addEventListener('click', handleLeaveMatch);
+      elements.leaveSessionBtn.addEventListener('click', handleLeaveMatch);
 
       // Keyboard shortcut to update buttons
       document.addEventListener('keydown', () => {

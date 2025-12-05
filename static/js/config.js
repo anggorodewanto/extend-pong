@@ -49,7 +49,7 @@ const CONFIG = {
   // Multiplayer Configuration
   MULTIPLAYER: {
     // Matchmaking
-    MATCH_POOL: 'pong-1v1',
+    MATCH_POOL: 'pong-solo-test',
     TICKET_TIMEOUT_SEC: 120,
 
     // Session

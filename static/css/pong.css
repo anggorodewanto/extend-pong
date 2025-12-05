@@ -488,6 +488,10 @@ body {
   border-left: 4px solid var(--error-color);
 }
 
+.toast.warning {
+  border-left: 4px solid #ffaa00;
+}
+
 .toast.info {
   border-left: 4px solid var(--accent-secondary);
 }
@@ -606,6 +610,192 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Mode Selection */
+.mode-selection {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.mode-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+  border-color: var(--accent-secondary);
+  color: var(--text-primary);
+}
+
+.mode-btn.active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.mode-icon {
+  font-size: 1.5rem;
+}
+
+/* Multiplayer Controls */
+.multiplayer-controls {
+  flex-direction: column;
+  gap: 16px;
+}
+
+.matchmaking-panel,
+.queue-panel,
+.match-found-panel,
+.multiplayer-game-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.btn-large {
+  padding: 16px 32px;
+  font-size: 1.1rem;
+  width: 100%;
+  max-width: 280px;
+}
+
+.btn-icon {
+  margin-right: 8px;
+}
+
+/* Queue Panel */
+.queue-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--bg-card);
+  padding: 16px 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.queue-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.queue-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.queue-text {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.queue-timer {
+  font-family: monospace;
+  font-size: 1.2rem;
+  color: var(--accent-primary);
+}
+
+/* Match Found Panel */
+.match-found-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 255, 136, 0.1);
+  padding: 16px 24px;
+  border-radius: 12px;
+  border: 1px solid var(--accent-primary);
+}
+
+.match-found-icon {
+  font-size: 1.5rem;
+}
+
+.match-found-text {
+  font-weight: 600;
+  color: var(--accent-primary);
+  font-size: 1.1rem;
+}
+
+.opponent-info {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.match-found-panel .btn {
+  margin-top: 8px;
+}
+
+/* Multiplayer game controls */
+.multiplayer-game-controls {
+  flex-direction: row;
+  justify-content: center;
+}
+
+/* Connection quality indicator */
+.connection-quality {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.connection-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+}
+
+.connection-bar {
+  width: 4px;
+  background: var(--border-color);
+  border-radius: 1px;
+}
+
+.connection-bar:nth-child(1) { height: 4px; }
+.connection-bar:nth-child(2) { height: 8px; }
+.connection-bar:nth-child(3) { height: 12px; }
+.connection-bar:nth-child(4) { height: 16px; }
+
+.connection-bars.good .connection-bar { background: var(--success-color); }
+.connection-bars.medium .connection-bar:nth-child(1),
+.connection-bars.medium .connection-bar:nth-child(2),
+.connection-bars.medium .connection-bar:nth-child(3) { background: #ffaa00; }
+.connection-bars.poor .connection-bar:nth-child(1),
+.connection-bars.poor .connection-bar:nth-child(2) { background: var(--error-color); }
+
+/* Multiplayer badge */
+.multiplayer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-secondary);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Footer */
