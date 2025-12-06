@@ -627,6 +627,124 @@ function handleNotification(data) {
 | `OnSessionMembersChanged` | Session membership changed |
 | `OnSessionUpdated` | Session attributes changed |
 
+#### Token Refresh
+
+The frontend implements automatic token refresh to maintain long-running sessions without requiring re-authentication.
+
+**Refresh Strategy:**
+- Token refresh is scheduled 60 seconds before expiry
+- On successful refresh, the new token is sent to the Lobby WebSocket
+- If refresh fails, the session is cleared and user must re-authenticate
+
+**API Client Token Refresh:**
+```javascript
+class PongAPI {
+  constructor() {
+    this.accessToken = null;
+    this.refreshToken = null;
+    this.tokenExpiry = null;
+    this._refreshTimeoutId = null;
+    this._onTokenRefreshCallbacks = [];
+  }
+
+  _scheduleTokenRefresh() {
+    if (!this.tokenExpiry || !this.refreshToken) return;
+
+    // Refresh 60 seconds before expiry
+    const refreshBuffer = 60 * 1000;
+    const timeUntilExpiry = this.tokenExpiry.getTime() - Date.now();
+    const refreshDelay = Math.max(timeUntilExpiry - refreshBuffer, 0);
+
+    this._refreshTimeoutId = setTimeout(() => {
+      this._refreshAccessToken();
+    }, refreshDelay);
+  }
+
+  async _refreshAccessToken() {
+    const credentials = btoa(`${CONFIG.CLIENT_ID}:`);
+
+    const response = await fetch(`${CONFIG.AGS_BASE_URL}/iam/v3/oauth/token`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        'grant_type': 'refresh_token',
+        'refresh_token': this.refreshToken
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      this._saveSession(data);
+      this._notifyTokenRefresh(this.accessToken);
+    }
+  }
+
+  // Register callback for token refresh notifications
+  onTokenRefresh(callback) {
+    this._onTokenRefreshCallbacks.push(callback);
+  }
+}
+```
+
+**Lobby WebSocket Token Refresh:**
+
+When the access token is refreshed, the new token must be sent to the Lobby WebSocket server to maintain the authenticated connection. This uses the AGS `refreshTokenRequest` message format.
+
+**Message Format:**
+```
+type: refreshTokenRequest
+id: refresh-{timestamp}
+token: {new_access_token}
+```
+
+**Response Format:**
+```
+type: refreshTokenResponse
+id: refresh-{timestamp}
+code: 0
+```
+
+**Implementation:**
+```javascript
+class LobbyWebSocket {
+  // Send refresh token request to lobby server
+  refreshToken(newToken) {
+    if (!this.isConnected) return false;
+
+    const messageId = `refresh-${Date.now()}`;
+    const message = [
+      'type: refreshTokenRequest',
+      `id: ${messageId}`,
+      `token: ${newToken}`
+    ].join('\n');
+
+    this.ws.send(message);
+    this.accessToken = newToken;  // Update for reconnections
+    return true;
+  }
+}
+
+// Integration with PongMultiplayer
+class PongMultiplayer {
+  async connectLobby() {
+    // ... connection setup ...
+
+    // Register for token refresh notifications
+    pongAPI.onTokenRefresh((newToken) => {
+      if (this.lobby?.isConnected) {
+        this.lobby.refreshToken(newToken);
+      }
+    });
+  }
+}
+```
+
+**References:**
+- [AGS Lobby WebSocket - Refresh Token](https://docs.accelbyte.io/gaming-services/services/play/lobby/lobby-websocket/#refresh-token)
+
 #### Lobby WebSocket Keepalive
 
 The AGS Lobby server uses a dual keepalive mechanism:
@@ -2294,7 +2412,7 @@ function startLatencyMonitor(peerConnection, onUpdate) {
 
 ---
 
-**Document Version:** 2.3
+**Document Version:** 2.4
 **Last Updated:** 2025-12-06
 **Author:** Technical Specification
-**Status:** Draft - P2P UI States Added
+**Status:** Draft - Token Refresh Added

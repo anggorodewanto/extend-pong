@@ -203,6 +203,30 @@ class LobbyWebSocket {
       this.ws.send(message);
     }
   }
+
+  // Send refresh token request to lobby server
+  // See: https://docs.accelbyte.io/gaming-services/services/play/lobby/lobby-websocket/#refresh-token
+  refreshToken(newToken) {
+    if (!this.isConnected || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('[Lobby] Cannot refresh token: WebSocket not connected');
+      return false;
+    }
+
+    const messageId = `refresh-${Date.now()}`;
+    const message = [
+      'type: refreshTokenRequest',
+      `id: ${messageId}`,
+      `token: ${newToken}`
+    ].join('\n');
+
+    console.log('[Lobby] Sending token refresh request');
+    this.ws.send(message);
+
+    // Update stored token for future reconnections
+    this.accessToken = newToken;
+
+    return true;
+  }
 }
 
 class PongMultiplayer {
@@ -255,6 +279,9 @@ class PongMultiplayer {
       latency: 0
     };
     this.latencyMonitorInterval = null;
+
+    // Token refresh callback (bound to this instance)
+    this._tokenRefreshHandler = this._handleTokenRefresh.bind(this);
 
     // Event handlers
     this.onStateChange = null;
@@ -323,6 +350,10 @@ class PongMultiplayer {
 
       this._setupLobbyHandlers();
       await this.lobby.connect();
+
+      // Register for token refresh notifications
+      pongAPI.onTokenRefresh(this._tokenRefreshHandler);
+
       this._setState(MultiplayerState.LOBBY_CONNECTED);
 
     } catch (error) {
@@ -332,6 +363,13 @@ class PongMultiplayer {
         this.onError('Failed to connect to lobby: ' + error.message);
       }
       throw error;
+    }
+  }
+
+  // Handle token refresh - send new token to lobby websocket
+  _handleTokenRefresh(newToken) {
+    if (this.lobby && this.lobby.isConnected) {
+      this.lobby.refreshToken(newToken);
     }
   }
 
@@ -348,10 +386,19 @@ class PongMultiplayer {
     // Connection events
     this.lobby.on('disconnected', (data) => this._handleLobbyDisconnect(data));
 
+    // Token refresh response
+    this.lobby.on('refreshTokenResponse', (data) => {
+      if (data.code === '0' || data.code === 0) {
+        console.log('[Multiplayer] Token refresh acknowledged by lobby server');
+      } else {
+        console.warn('[Multiplayer] Token refresh failed:', data);
+      }
+    });
+
     // Catch-all for debugging unhandled messages
     this.lobby.on('message', (data) => {
       const type = data.type || data.code;
-      const handledTypes = ['connectNotif', 'heartbeat', 'disconnected', 'messageNotif', 'messageSessionNotif', 'signalingP2PNotif'];
+      const handledTypes = ['connectNotif', 'heartbeat', 'disconnected', 'messageNotif', 'messageSessionNotif', 'signalingP2PNotif', 'refreshTokenResponse'];
       if (type && !handledTypes.includes(type)) {
         console.warn('[Multiplayer] Unhandled message type:', type, data);
       }
@@ -359,6 +406,9 @@ class PongMultiplayer {
   }
 
   async disconnectLobby() {
+    // Unregister token refresh callback
+    pongAPI.offTokenRefresh(this._tokenRefreshHandler);
+
     if (this.lobby) {
       this.lobby.disconnect();
       this.lobby = null;
@@ -989,7 +1039,8 @@ class PongMultiplayer {
         return [];
       }
 
-      return await response.json();
+      const data = await response.json();
+      return data.servers || [];
 
     } catch (error) {
       // TURN fetch failed (likely no proxy endpoint) - use STUN fallback silently
@@ -1609,6 +1660,9 @@ class PongMultiplayer {
   }
 
   _cleanup() {
+    // Unregister token refresh callback
+    pongAPI.offTokenRefresh(this._tokenRefreshHandler);
+
     this._cleanupP2P();
     this.currentTicketId = null;
     this.currentSessionId = null;
