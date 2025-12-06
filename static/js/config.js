@@ -46,16 +46,22 @@ const CONFIG = {
   // Animation
   TARGET_FPS: 60,
 
+  // Win condition
+  WINNING_SCORE: 11,
+
   // Multiplayer Configuration
   MULTIPLAYER: {
     // Matchmaking
-    MATCH_POOL: 'pong-solo-test',
+    MATCH_POOL: 'pong-1v1',
     TICKET_TIMEOUT_SEC: 120,
 
     // Session
     SESSION_TEMPLATE: 'pong-p2p-session',
     MIN_PLAYERS: 2,
     MAX_PLAYERS: 2,
+
+    // Countdown before game starts
+    COUNTDOWN_SECONDS: 3,
 
     // Networking
     TICK_RATE: 60,              // Game simulation rate (Hz)

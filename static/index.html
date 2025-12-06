@@ -32,6 +32,54 @@
       <!-- Canvas -->
       <div class="canvas-container">
         <canvas id="gameCanvas"></canvas>
+
+        <!-- P2P Connection Overlay -->
+        <div class="p2p-overlay" id="p2pOverlay">
+          <div class="p2p-overlay-content">
+            <div class="p2p-spinner" id="p2pSpinner"></div>
+            <div class="p2p-status-title" id="p2pStatusTitle">Connecting to Peer</div>
+            <div class="p2p-status-message" id="p2pStatusMessage">Establishing connection...</div>
+
+            <!-- Progress Steps -->
+            <div class="p2p-progress-steps" id="p2pProgressSteps">
+              <div class="p2p-step" id="p2pStepHost" data-step="host">
+                <div class="p2p-step-indicator">1</div>
+                <div class="p2p-step-label">Host Check</div>
+              </div>
+              <div class="p2p-step-connector" id="p2pConnector1"></div>
+              <div class="p2p-step" id="p2pStepIce" data-step="ice">
+                <div class="p2p-step-indicator">2</div>
+                <div class="p2p-step-label">ICE Offer</div>
+              </div>
+              <div class="p2p-step-connector" id="p2pConnector2"></div>
+              <div class="p2p-step" id="p2pStepSdp" data-step="sdp">
+                <div class="p2p-step-indicator">3</div>
+                <div class="p2p-step-label">SDP Exchange</div>
+              </div>
+              <div class="p2p-step-connector" id="p2pConnector3"></div>
+              <div class="p2p-step" id="p2pStepConnect" data-step="connect">
+                <div class="p2p-step-indicator">4</div>
+                <div class="p2p-step-label">Connect</div>
+              </div>
+            </div>
+
+            <button class="btn btn-secondary p2p-retry-btn" id="p2pRetryBtn" style="display: none;">
+              Retry Connection
+            </button>
+            <button class="btn btn-secondary" id="p2pCancelBtn">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Connection Quality Indicator -->
+        <div class="connection-quality-display" id="connectionQualityDisplay" style="display: none;">
+          <div class="connection-type" id="connectionType">
+            <span class="connection-type-icon" id="connectionTypeIcon"></span>
+            <span class="connection-type-label" id="connectionTypeLabel">Direct</span>
+          </div>
+          <div class="connection-latency" id="connectionLatency">0ms</div>
+        </div>
       </div>
 
       <!-- Controls (Single Player) -->
@@ -67,6 +115,7 @@
           <div class="opponent-info" id="opponentInfo">
             <span>Connecting to opponent...</span>
           </div>
+          <div class="match-rules">First to 11 wins</div>
           <button class="btn btn-secondary" id="leaveSessionBtn">Leave Session</button>
         </div>
         <div class="multiplayer-game-controls" id="multiplayerGameControls" style="display: none;">
@@ -145,6 +194,7 @@
   <script src="js/api.js"></script>
   <script src="js/multiplayer.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/multiplayer-game.js"></script>
   <script>
     // Main application controller
     (function() {
@@ -183,17 +233,49 @@
         opponentInfo: document.getElementById('opponentInfo'),
         multiplayerGameControls: document.getElementById('multiplayerGameControls'),
         leaveMatchBtn: document.getElementById('leaveMatchBtn'),
-        leaveSessionBtn: document.getElementById('leaveSessionBtn')
+        leaveSessionBtn: document.getElementById('leaveSessionBtn'),
+        // P2P Overlay
+        p2pOverlay: document.getElementById('p2pOverlay'),
+        p2pStatusTitle: document.getElementById('p2pStatusTitle'),
+        p2pStatusMessage: document.getElementById('p2pStatusMessage'),
+        p2pSpinner: document.getElementById('p2pSpinner'),
+        p2pRetryBtn: document.getElementById('p2pRetryBtn'),
+        p2pCancelBtn: document.getElementById('p2pCancelBtn'),
+        p2pStepHost: document.getElementById('p2pStepHost'),
+        p2pStepIce: document.getElementById('p2pStepIce'),
+        p2pStepSdp: document.getElementById('p2pStepSdp'),
+        p2pStepConnect: document.getElementById('p2pStepConnect'),
+        p2pConnector1: document.getElementById('p2pConnector1'),
+        p2pConnector2: document.getElementById('p2pConnector2'),
+        p2pConnector3: document.getElementById('p2pConnector3'),
+        // Connection Quality
+        connectionQualityDisplay: document.getElementById('connectionQualityDisplay'),
+        connectionType: document.getElementById('connectionType'),
+        connectionTypeIcon: document.getElementById('connectionTypeIcon'),
+        connectionTypeLabel: document.getElementById('connectionTypeLabel'),
+        connectionLatency: document.getElementById('connectionLatency')
       };
 
-      // Initialize game
+      // Initialize games
       const game = new PongGame('gameCanvas');
+      let multiplayerGame = null;
       let isSubmittingScore = false;
 
       // Game mode state
       let currentMode = 'single'; // 'single' or 'multi'
       let queueTimerInterval = null;
       let queueStartTime = null;
+
+      // P2P state messages
+      const P2P_STATE_MESSAGES = {
+        HOST_CHECK: { title: 'Connecting to Peer', message: 'Checking host availability...' },
+        ICE_OFFER: { title: 'Connecting to Peer', message: 'Negotiating connection...' },
+        SDP_EXCHANGE: { title: 'Connecting to Peer', message: 'Exchanging session details...' },
+        GATHERING: { title: 'Connecting to Peer', message: 'Gathering network candidates...' },
+        ESTABLISHING: { title: 'Almost There', message: 'Establishing direct connection...' },
+        CONNECTED: { title: 'Connected!', message: 'Starting game...' },
+        FAILED: { title: 'Connection Failed', message: 'Could not establish peer connection.' }
+      };
 
       // Toast notification system
       function showToast(message, type = 'info') {
@@ -206,6 +288,198 @@
           toast.style.animation = 'slideIn 0.3s ease reverse';
           setTimeout(() => toast.remove(), 300);
         }, 3000);
+      }
+
+      // P2P Overlay Functions
+      function showP2POverlay() {
+        elements.p2pOverlay.classList.add('active');
+        elements.p2pOverlay.classList.remove('error');
+        elements.p2pSpinner.style.display = 'block';
+        elements.p2pRetryBtn.style.display = 'none';
+        resetP2PSteps();
+      }
+
+      function hideP2POverlay() {
+        elements.p2pOverlay.classList.remove('active', 'error');
+      }
+
+      function showP2PError(message) {
+        elements.p2pOverlay.classList.add('error');
+        elements.p2pSpinner.style.display = 'none';
+        elements.p2pRetryBtn.style.display = 'inline-flex';
+        elements.p2pStatusTitle.textContent = 'Connection Failed';
+        elements.p2pStatusMessage.textContent = message || 'Could not establish peer connection.';
+      }
+
+      function resetP2PSteps() {
+        [elements.p2pStepHost, elements.p2pStepIce, elements.p2pStepSdp, elements.p2pStepConnect].forEach(step => {
+          step.classList.remove('active', 'completed', 'error');
+        });
+        [elements.p2pConnector1, elements.p2pConnector2, elements.p2pConnector3].forEach(connector => {
+          connector.classList.remove('active');
+        });
+      }
+
+      function updateP2PStep(state) {
+        const stateMsg = P2P_STATE_MESSAGES[state];
+        if (stateMsg) {
+          elements.p2pStatusTitle.textContent = stateMsg.title;
+          elements.p2pStatusMessage.textContent = stateMsg.message;
+        }
+
+        // Update step indicators based on state
+        const steps = {
+          HOST_CHECK: [0],
+          ICE_OFFER: [0, 1],
+          SDP_EXCHANGE: [0, 1, 2],
+          GATHERING: [0, 1, 2],
+          ESTABLISHING: [0, 1, 2, 3],
+          CONNECTED: [0, 1, 2, 3],
+          FAILED: []
+        };
+
+        const stepElements = [elements.p2pStepHost, elements.p2pStepIce, elements.p2pStepSdp, elements.p2pStepConnect];
+        const connectorElements = [elements.p2pConnector1, elements.p2pConnector2, elements.p2pConnector3];
+        const completedSteps = steps[state] || [];
+
+        stepElements.forEach((step, i) => {
+          step.classList.remove('active', 'completed', 'error');
+          if (completedSteps.includes(i)) {
+            if (i === completedSteps[completedSteps.length - 1]) {
+              step.classList.add('active');
+            } else {
+              step.classList.add('completed');
+            }
+          }
+        });
+
+        connectorElements.forEach((connector, i) => {
+          connector.classList.toggle('active', completedSteps.includes(i + 1));
+        });
+
+        if (state === 'CONNECTED') {
+          stepElements.forEach(step => {
+            step.classList.remove('active');
+            step.classList.add('completed');
+          });
+        }
+
+        if (state === 'FAILED') {
+          stepElements.forEach(step => {
+            step.classList.add('error');
+          });
+          showP2PError();
+        }
+      }
+
+      // Connection Quality Display
+      function showConnectionQuality() {
+        elements.connectionQualityDisplay.style.display = 'flex';
+      }
+
+      function hideConnectionQuality() {
+        elements.connectionQualityDisplay.style.display = 'none';
+      }
+
+      function updateConnectionQuality(info) {
+        if (!info) return;
+
+        // Update connection type
+        let typeLabel = 'Direct';
+        let typeIcon = '&#128279;'; // link icon
+        elements.connectionType.className = 'connection-type';
+
+        switch (info.type) {
+          case 'host':
+            typeLabel = 'Direct';
+            typeIcon = '&#9889;'; // lightning
+            elements.connectionType.classList.add('direct');
+            break;
+          case 'srflx':
+            typeLabel = 'STUN';
+            typeIcon = '&#127760;'; // globe
+            break;
+          case 'relay':
+            typeLabel = 'Relay';
+            typeIcon = '&#128260;'; // relay
+            elements.connectionType.classList.add('relay');
+            break;
+          default:
+            typeLabel = 'Unknown';
+        }
+
+        elements.connectionTypeIcon.innerHTML = typeIcon;
+        elements.connectionTypeLabel.textContent = typeLabel;
+
+        // Update latency
+        const latency = info.latency || 0;
+        elements.connectionLatency.textContent = `${latency}ms`;
+        elements.connectionLatency.className = 'connection-latency';
+
+        if (latency < 50) {
+          elements.connectionLatency.classList.add('good');
+        } else if (latency < 100) {
+          elements.connectionLatency.classList.add('medium');
+        } else {
+          elements.connectionLatency.classList.add('poor');
+        }
+      }
+
+      // Initialize multiplayer game
+      function initMultiplayerGame(isHost) {
+        if (multiplayerGame) {
+          multiplayerGame.destroy();
+        }
+
+        multiplayerGame = new MultiplayerGame('gameCanvas');
+        multiplayerGame.setRole(isHost);
+
+        multiplayerGame.onScoreUpdate = (local, remote) => {
+          console.log(`[App] Multiplayer score: ${local} - ${remote}`);
+        };
+
+        multiplayerGame.onGameOver = (result) => {
+          console.log('[App] Game over:', result);
+          hideConnectionQuality();
+
+          if (result.won) {
+            showToast('You won!', 'success');
+          } else if (result.reason === 'opponent_left') {
+            showToast('Opponent left - you win by forfeit!', 'success');
+          } else {
+            showToast('Game over - you lost', 'info');
+          }
+        };
+
+        multiplayerGame.onConnectionInfoUpdate = (info) => {
+          updateConnectionQuality(info);
+        };
+
+        // Connect game state receiver
+        pongMultiplayer.onGameStateReceived = (state) => {
+          if (multiplayerGame) {
+            multiplayerGame.receiveGameState(state);
+          }
+        };
+
+        return multiplayerGame;
+      }
+
+      function startMultiplayerGame() {
+        if (multiplayerGame) {
+          multiplayerGame.start();
+          showConnectionQuality();
+          // Countdown and game_start signal are now handled internally by MultiplayerGame
+        }
+      }
+
+      function cleanupMultiplayerGame() {
+        if (multiplayerGame) {
+          multiplayerGame.destroy();
+          multiplayerGame = null;
+        }
+        hideConnectionQuality();
+        hideP2POverlay();
       }
 
       // Update UI based on login state
@@ -270,6 +544,15 @@
       // Mode switching
       function switchMode(mode) {
         if (currentMode === mode) return;
+
+        // Clean up existing multiplayer game when leaving multiplayer mode
+        if (currentMode === 'multi') {
+          cleanupMultiplayerGame();
+          // Leave session if in one
+          if (pongMultiplayer.isInSession()) {
+            pongMultiplayer.leaveSession().catch(e => console.error('Failed to leave session:', e));
+          }
+        }
 
         currentMode = mode;
 
@@ -400,12 +683,15 @@
 
       async function handleLeaveMatch() {
         try {
+          hideP2POverlay();
+          cleanupMultiplayerGame();
           await pongMultiplayer.leaveSession();
           showToast('Left the match', 'info');
           showMatchmakingPanel();
           game.reset();
         } catch (error) {
           console.error('Failed to leave match:', error);
+          cleanupMultiplayerGame();
           showMatchmakingPanel();
         }
       }
@@ -422,6 +708,7 @@
           case 'idle':
           case 'lobby_connected':
             showMatchmakingPanel();
+            cleanupMultiplayerGame();
             break;
           case 'queuing':
             showQueuePanel();
@@ -429,17 +716,32 @@
           case 'matched':
           case 'joining_session':
           case 'in_session':
-          case 'connecting_p2p':
             showMatchFoundPanel(null);
             break;
+          case 'connecting_p2p':
+            showMatchFoundPanel(null);
+            showP2POverlay();
+            break;
           case 'playing':
+            hideP2POverlay();
             showMultiplayerGameControls();
+            startMultiplayerGame();
             break;
           case 'finished':
+            cleanupMultiplayerGame();
+            showMatchmakingPanel();
+            break;
           case 'error':
+            cleanupMultiplayerGame();
             showMatchmakingPanel();
             break;
         }
+      };
+
+      // P2P state change handler
+      pongMultiplayer.onP2PStateChange = function(newState, oldState) {
+        console.log(`[App] P2P state: ${oldState} -> ${newState}`);
+        updateP2PStep(newState);
       };
 
       pongMultiplayer.onMatchFound = function(data) {
@@ -451,6 +753,9 @@
         console.log('[App] Session joined:', data);
         const opponentName = getOpponentDisplayName(data.opponent);
         showMatchFoundPanel(opponentName);
+
+        // Initialize multiplayer game with role
+        initMultiplayerGame(data.isHost);
 
         if (data.opponent) {
           showToast(`Connected to ${opponentName}`, 'success');
@@ -486,6 +791,7 @@
 
         // Reset to matchmaking if game was in progress
         if (currentMode === 'multi') {
+          cleanupMultiplayerGame();
           game.reset();
           showMatchmakingPanel();
         }
@@ -496,6 +802,7 @@
         showToast('You were removed from the match', 'error');
 
         if (currentMode === 'multi') {
+          cleanupMultiplayerGame();
           game.reset();
           showMatchmakingPanel();
         }
@@ -503,9 +810,15 @@
 
       pongMultiplayer.onP2PConnected = function() {
         console.log('[App] P2P connected');
+        hideP2POverlay();
         showMultiplayerGameControls();
         showToast('Game starting!', 'success');
-        // TODO: Start multiplayer game
+        // Game is started via state change handler
+      };
+
+      // Connection quality updates
+      pongMultiplayer.onConnectionInfoUpdate = function(info) {
+        updateConnectionQuality(info);
       };
 
       pongMultiplayer.onP2PDisconnected = function(data) {
@@ -515,6 +828,7 @@
           showToast('Connection unstable...', 'warning');
         } else {
           showToast('Connection lost', 'error');
+          cleanupMultiplayerGame();
           showMatchmakingPanel();
         }
       };
@@ -522,6 +836,8 @@
       pongMultiplayer.onError = function(message) {
         showToast(message, 'error');
         if (currentMode === 'multi') {
+          hideP2POverlay();
+          cleanupMultiplayerGame();
           showMatchmakingPanel();
         }
       };
@@ -727,6 +1043,26 @@
       elements.cancelMatchBtn.addEventListener('click', handleCancelMatch);
       elements.leaveMatchBtn.addEventListener('click', handleLeaveMatch);
       elements.leaveSessionBtn.addEventListener('click', handleLeaveMatch);
+
+      // P2P overlay event listeners
+      elements.p2pCancelBtn.addEventListener('click', async () => {
+        hideP2POverlay();
+        cleanupMultiplayerGame();
+        await pongMultiplayer.leaveSession();
+        showMatchmakingPanel();
+      });
+
+      elements.p2pRetryBtn.addEventListener('click', async () => {
+        // Reset overlay state and retry
+        showP2POverlay();
+        resetP2PSteps();
+        try {
+          // Re-initiate P2P connection
+          await pongMultiplayer._initiateP2PConnection();
+        } catch (error) {
+          showP2PError(error.message);
+        }
+      });
 
       // Keyboard shortcut to update buttons
       document.addEventListener('keydown', () => {

@@ -121,6 +121,112 @@ The service is configured with a base path of `/pong`. All REST API endpoints an
     - Matchmaking queue with status indicator
     - Connection quality indicator
     - Opponent info display
+    - P2P connection status overlay
+
+#### Multiplayer UI States
+
+The multiplayer UI displays different states throughout the matchmaking and P2P connection flow:
+
+| State | UI Display | Description |
+|-------|------------|-------------|
+| `IDLE` | "Find Match" button | Ready to start matchmaking |
+| `QUEUING` | Spinner + "Searching for opponent..." + Cancel button | Matchmaking in progress |
+| `MATCHED` | "Match found!" + opponent info | Brief transition state |
+| `JOINING` | "Joining session..." | Joining the game session |
+| `CONNECTING` | P2P connection overlay (see below) | WebRTC handshake in progress |
+| `PLAYING` | Game canvas + connection indicator | Active gameplay |
+| `RECONNECTING` | "Reconnecting..." overlay on game | Attempting to restore connection |
+| `FINISHED` | Game over screen + stats | Match complete |
+
+#### P2P Connection Status Overlay
+
+During the `CONNECTING` state, display a detailed overlay showing signaling progress:
+
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│         Connecting to opponent          │
+│                                         │
+│    ● Checking peer status...      [✓]   │
+│    ● Exchanging connection info...  ◌   │
+│    ○ Gathering network paths...         │
+│    ○ Establishing connection...         │
+│                                         │
+│              [Cancel]                   │
+│                                         │
+└─────────────────────────────────────────┘
+
+Legend: ● Complete  ◌ In Progress  ○ Pending  [✓] Success  [✗] Failed
+```
+
+**P2P Connection Sub-states:**
+
+| Sub-state | Display Text | Signaling Phase |
+|-----------|--------------|-----------------|
+| `HOST_CHECK` | "Checking peer status..." | Sending/receiving `hosting`/`hostingreply` |
+| `ICE_OFFER` | "Exchanging connection info..." | Sending `ice` offer with TURN config |
+| `SDP_EXCHANGE` | "Exchanging connection info..." | SDP offer/answer exchange |
+| `GATHERING` | "Gathering network paths..." | ICE candidate exchange |
+| `ESTABLISHING` | "Establishing connection..." | Final ICE negotiation |
+| `CONNECTED` | (Overlay closes, game starts) | DataChannel open |
+
+#### Connection Quality Indicator
+
+Once connected, display a persistent connection indicator during gameplay:
+
+```javascript
+const CONNECTION_INDICATORS = {
+  // Connection type badges
+  DIRECT: { icon: '🟢', label: 'Direct', color: '#4CAF50' },
+  STUN:   { icon: '🟡', label: 'STUN', color: '#FFC107' },
+  RELAY:  { icon: '🟠', label: 'Relay', color: '#FF9800' },
+
+  // Quality based on latency
+  EXCELLENT: { icon: '●●●●', threshold: 50 },   // < 50ms
+  GOOD:      { icon: '●●●○', threshold: 100 },  // 50-100ms
+  FAIR:      { icon: '●●○○', threshold: 200 },  // 100-200ms
+  POOR:      { icon: '●○○○', threshold: Infinity } // > 200ms
+};
+```
+
+**UI Layout during gameplay:**
+```
+┌────────────────────────────────────────────────────────────┐
+│  You: 3          [🟢 Direct 32ms]          Opponent: 5     │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│    │                                              │        │
+│    │                      ●                       │        │
+│    │                                              │        │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
+```
+
+#### Error State UI
+
+Display appropriate error messages with recovery options:
+
+| Error | Display | Actions |
+|-------|---------|---------|
+| Host not responding | "Opponent not ready. Please wait..." | Auto-retry (3x), then "Return to Menu" |
+| ICE gathering failed | "Network error. Check your connection." | "Retry" / "Return to Menu" |
+| Connection timeout | "Connection timed out." | "Retry" / "Return to Menu" |
+| Peer disconnected | "Opponent disconnected." | "Wait for reconnect" (10s) / "Leave Match" |
+| TURN server unavailable | "Server connection failed." | "Retry" / "Return to Menu" |
+
+**Error Overlay Example:**
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│         ⚠️ Connection Failed            │
+│                                         │
+│    Connection timed out while           │
+│    trying to reach your opponent.       │
+│                                         │
+│       [Retry]    [Return to Menu]       │
+│                                         │
+└─────────────────────────────────────────┘
+```
 
 #### Frontend-Backend Integration
 The frontend will make the following API calls:
@@ -299,11 +405,16 @@ sequenceDiagram
     B->>T: Get TURN servers
     B->>T: Get TURN credentials
 
-    Note over A,B: 5. WebRTC Handshake via Session Attributes
-    A->>S: PATCH session (signaling offer)
-    L->>B: messageSessionNotif (topic: OnSessionUpdated)
-    B->>S: PATCH session (signaling answer)
-    L->>A: messageSessionNotif (topic: OnSessionUpdated)
+    Note over A,B: 5. WebRTC Handshake via Lobby Signaling
+    A->>L: signalingP2PNotif (host check)
+    L->>B: signalingP2PNotif
+    B->>L: signalingP2PNotif (host reply)
+    L->>A: signalingP2PNotif
+    A->>L: signalingP2PNotif (SDP offer)
+    L->>B: signalingP2PNotif
+    B->>L: signalingP2PNotif (SDP answer)
+    L->>A: signalingP2PNotif
+    Note over A,B: ICE candidates exchanged via signalingP2PNotif
     A-->>B: RTCDataChannel established
 
     Note over A,B: 6. Game Play
@@ -838,42 +949,411 @@ class PongNetcode {
 
 ### Signaling via Lobby WebSocket
 
-AGS Lobby WebSocket can be used for WebRTC signaling using party or custom notifications:
+AGS Lobby WebSocket has a built-in P2P signaling mechanism that enables real-time WebRTC signaling without polling. This is the recommended approach used by AccelByte's official network utilities.
+
+#### Signaling Protocol
+
+**Sending a Signaling Message:**
+```
+type: signalingP2PNotif
+id: signaling-{random}
+destinationId: {peerId}
+message: {base64EncodedJsonMessage}
+```
+
+**Receiving Signaling Messages:**
+The Lobby fires a `signalingP2PNotif` notification with:
+- `destinationId` - The sender's user ID
+- `message` - Base64 encoded JSON payload
+
+#### Signaling Message Structure
 
 ```javascript
-// Send signaling message to peer via session attributes
-async function sendSignalingToPeer(sessionId, message) {
-  await fetch(
-    `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        attributes: {
-          [`signaling_${currentUserId}`]: JSON.stringify(message)
-        }
-      })
-    }
-  );
-}
-
-// Poll for signaling messages (or use session update notifications)
-async function pollSignalingMessages(sessionId, peerId) {
-  const response = await fetch(
-    `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${sessionId}`,
-    { headers: { 'Authorization': `Bearer ${accessToken}` } }
-  );
-  const session = await response.json();
-  const message = session.attributes?.[`signaling_${peerId}`];
-  if (message) {
-    return JSON.parse(message);
+// Signaling message format (JSON, then Base64 encoded)
+const signalingMessage = {
+  Type: "hosting" | "hostingreply" | "ice" | "sdp" | "candidate" | "done",
+  Channel: 0,           // For multiplexed connections (use 0 for single game)
+  Data: "",             // Payload (SDP string, candidate, or status)
+  TurnServer: {         // Only included in "ice" messages
+    Host: "turn.example.com",
+    Port: 3478,
+    Username: "user",
+    Password: "pass"
   }
-  return null;
+};
+```
+
+#### Message Types
+
+| Type | Direction | Purpose | Data Field |
+|------|-----------|---------|------------|
+| `hosting` | Client → Host | Check if peer is hosting | Empty |
+| `hostingreply` | Host → Client | Reply to host check | `"hosting"` or `"not_hosting"` |
+| `ice` | Client → Host | Initiate ICE connection | `"offer"` + TurnServer config |
+| `sdp` | Both ↔ Both | Session Description Protocol | Full SDP string |
+| `candidate` | Both ↔ Both | ICE candidate | Candidate string (e.g., `"candidate:..."`) |
+| `done` | Both ↔ Both | ICE gathering complete | Empty |
+
+#### Complete Signaling Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client (Guest)
+    participant L as Lobby WebSocket
+    participant H as Host
+
+    Note over C,H: 1. Host Detection
+    C->>L: signalingP2PNotif (Type: "hosting")
+    L->>H: signalingP2PNotif
+    H->>L: signalingP2PNotif (Type: "hostingreply", Data: "hosting")
+    L->>C: signalingP2PNotif
+
+    Note over C,H: 2. ICE Initiation
+    C->>L: signalingP2PNotif (Type: "ice", TurnServer: {...})
+    L->>H: signalingP2PNotif
+
+    Note over C,H: 3. SDP Exchange
+    C->>L: signalingP2PNotif (Type: "sdp", Data: localSDP)
+    L->>H: signalingP2PNotif
+    H->>L: signalingP2PNotif (Type: "sdp", Data: localSDP)
+    L->>C: signalingP2PNotif
+
+    Note over C,H: 4. ICE Candidate Exchange (multiple messages)
+    C->>L: signalingP2PNotif (Type: "candidate", Data: "candidate:...")
+    L->>H: signalingP2PNotif
+    H->>L: signalingP2PNotif (Type: "candidate", Data: "candidate:...")
+    L->>C: signalingP2PNotif
+
+    Note over C,H: 5. Gathering Complete
+    C->>L: signalingP2PNotif (Type: "done")
+    L->>H: signalingP2PNotif
+    H->>L: signalingP2PNotif (Type: "done")
+    L->>C: signalingP2PNotif
+
+    Note over C,H: 6. P2P Connection Established
+    C->>H: RTCDataChannel (via TURN/STUN)
+```
+
+#### Signaling Implementation
+
+```javascript
+class P2PSignaling {
+  constructor(lobbyWs, currentUserId) {
+    this.lobby = lobbyWs;
+    this.currentUserId = currentUserId;
+    this.pendingCandidates = [];  // Queue candidates until SDP is set
+    this.isDescriptionReady = false;
+
+    // Register signaling handler
+    this.lobby.on('signalingP2PNotif', (data) => this._handleSignaling(data));
+  }
+
+  /**
+   * Send a signaling message to a peer
+   */
+  sendMessage(peerId, message) {
+    const jsonString = JSON.stringify(message);
+    const base64Message = btoa(jsonString);
+    const messageId = `signaling-${Date.now()}`;
+
+    const rawMessage = [
+      'type: signalingP2PNotif',
+      `id: ${messageId}`,
+      `destinationId: ${peerId}`,
+      `message: ${base64Message}`
+    ].join('\n');
+
+    this.lobby.ws.send(rawMessage);
+  }
+
+  /**
+   * Handle incoming signaling message
+   */
+  _handleSignaling(data) {
+    const peerId = data.destinationId;
+    const decoded = JSON.parse(atob(data.message));
+
+    switch (decoded.Type) {
+      case 'hosting':
+        this._handleHostingCheck(peerId);
+        break;
+      case 'hostingreply':
+        this._handleHostingReply(peerId, decoded.Data);
+        break;
+      case 'ice':
+        this._handleIceOffer(peerId, decoded);
+        break;
+      case 'sdp':
+        this._handleSdp(peerId, decoded.Data);
+        break;
+      case 'candidate':
+        this._handleCandidate(peerId, decoded.Data);
+        break;
+      case 'done':
+        this._handleGatheringDone(peerId);
+        break;
+    }
+  }
+
+  /**
+   * Step 1: Check if peer is hosting (called by client/guest)
+   */
+  checkHosting(peerId) {
+    this.sendMessage(peerId, {
+      Type: 'hosting',
+      Channel: 0,
+      Data: ''
+    });
+  }
+
+  /**
+   * Step 1: Reply to hosting check (called by host)
+   */
+  _handleHostingCheck(peerId) {
+    if (this.isHosting) {
+      this.sendMessage(peerId, {
+        Type: 'hostingreply',
+        Channel: 0,
+        Data: 'hosting'
+      });
+    } else {
+      this.sendMessage(peerId, {
+        Type: 'hostingreply',
+        Channel: 0,
+        Data: 'not_hosting'
+      });
+    }
+  }
+
+  /**
+   * Step 2: Send ICE offer with TURN credentials (called by client)
+   */
+  sendIceOffer(peerId, turnCredentials, turnServer) {
+    this.sendMessage(peerId, {
+      Type: 'ice',
+      Channel: 0,
+      Data: 'offer',
+      TurnServer: {
+        Host: turnServer.ip,
+        Port: turnServer.port,
+        Username: turnCredentials.username,
+        Password: turnCredentials.password
+      }
+    });
+  }
+
+  /**
+   * Step 3: Send local SDP
+   */
+  sendSdp(peerId, sdp) {
+    this.sendMessage(peerId, {
+      Type: 'sdp',
+      Channel: 0,
+      Data: sdp
+    });
+  }
+
+  /**
+   * Step 4: Send ICE candidate
+   */
+  sendCandidate(peerId, candidate) {
+    this.sendMessage(peerId, {
+      Type: 'candidate',
+      Channel: 0,
+      Data: candidate
+    });
+  }
+
+  /**
+   * Step 5: Signal gathering complete
+   */
+  sendGatheringDone(peerId) {
+    this.sendMessage(peerId, {
+      Type: 'done',
+      Channel: 0,
+      Data: ''
+    });
+  }
+
+  // Callbacks (set by P2P connection manager)
+  onHostingConfirmed = null;   // (peerId, turnServer) => {}
+  onSdpReceived = null;        // (peerId, sdp) => {}
+  onCandidateReceived = null;  // (peerId, candidate) => {}
+  onGatheringDone = null;      // (peerId) => {}
 }
 ```
+
+#### Integrated P2P Connection with Signaling
+
+```javascript
+class PongP2PConnection {
+  constructor(signaling, turnCredentials, turnServer, isHost) {
+    this.signaling = signaling;
+    this.isHost = isHost;
+    this.peerId = null;
+    this.pendingCandidates = [];
+    this.isRemoteDescriptionSet = false;
+
+    const iceServers = [
+      { urls: `stun:${turnServer.ip}:${turnServer.port}` },
+      {
+        urls: `turn:${turnServer.ip}:${turnServer.port}`,
+        username: turnCredentials.username,
+        credential: turnCredentials.password
+      }
+    ];
+
+    this.peerConnection = new RTCPeerConnection({ iceServers });
+    this.dataChannel = null;
+    this._setupEventHandlers();
+    this._setupSignalingHandlers();
+  }
+
+  _setupEventHandlers() {
+    // Send ICE candidates via signaling
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.signaling.sendCandidate(this.peerId, event.candidate.candidate);
+      }
+    };
+
+    // Signal when gathering is complete
+    this.peerConnection.onicegatheringstatechange = () => {
+      if (this.peerConnection.iceGatheringState === 'complete') {
+        this.signaling.sendGatheringDone(this.peerId);
+      }
+    };
+
+    this.peerConnection.ondatachannel = (event) => {
+      this.dataChannel = event.channel;
+      this._setupDataChannel();
+    };
+
+    this.peerConnection.onconnectionstatechange = () => {
+      if (this.peerConnection.connectionState === 'connected') {
+        this.onConnected?.();
+      } else if (this.peerConnection.connectionState === 'disconnected') {
+        this.onDisconnected?.();
+      }
+    };
+  }
+
+  _setupSignalingHandlers() {
+    this.signaling.onSdpReceived = async (peerId, sdp) => {
+      if (peerId !== this.peerId) return;
+
+      const type = this.isHost ? 'offer' : 'answer';
+      await this.peerConnection.setRemoteDescription(
+        new RTCSessionDescription({ type, sdp })
+      );
+      this.isRemoteDescriptionSet = true;
+
+      // Process queued candidates
+      for (const candidate of this.pendingCandidates) {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate({ candidate }));
+      }
+      this.pendingCandidates = [];
+
+      // If host, create and send answer
+      if (this.isHost) {
+        const answer = await this.peerConnection.createAnswer();
+        await this.peerConnection.setLocalDescription(answer);
+        this.signaling.sendSdp(this.peerId, answer.sdp);
+      }
+    };
+
+    this.signaling.onCandidateReceived = async (peerId, candidate) => {
+      if (peerId !== this.peerId) return;
+
+      if (this.isRemoteDescriptionSet) {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate({ candidate }));
+      } else {
+        // Queue until remote description is set
+        this.pendingCandidates.push(candidate);
+      }
+    };
+  }
+
+  _setupDataChannel() {
+    this.dataChannel.onopen = () => this.onConnected?.();
+    this.dataChannel.onmessage = (event) => {
+      this.onGameStateReceived?.(JSON.parse(event.data));
+    };
+    this.dataChannel.onclose = () => this.onDisconnected?.();
+  }
+
+  /**
+   * Start connection as client (guest)
+   */
+  async connectToPeer(peerId, turnCredentials, turnServer) {
+    this.peerId = peerId;
+
+    // Step 1: Check if peer is hosting
+    this.signaling.checkHosting(peerId);
+
+    // Wait for hosting confirmation (set up via callback)
+    this.signaling.onHostingConfirmed = async (confirmedPeerId, receivedTurnServer) => {
+      if (confirmedPeerId !== peerId) return;
+
+      // Step 2: Send ICE offer
+      this.signaling.sendIceOffer(peerId, turnCredentials, turnServer);
+
+      // Step 3: Create and send local SDP
+      this.dataChannel = this.peerConnection.createDataChannel('pong-game', {
+        ordered: false,
+        maxRetransmits: 0
+      });
+      this._setupDataChannel();
+
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+      this.signaling.sendSdp(peerId, offer.sdp);
+    };
+  }
+
+  /**
+   * Start listening as host
+   */
+  async startHosting(peerId) {
+    this.peerId = peerId;
+    this.signaling.isHosting = true;
+    // Host waits for signaling messages from client
+  }
+
+  sendGameState(state) {
+    if (this.dataChannel?.readyState === 'open') {
+      this.dataChannel.send(JSON.stringify(state));
+    }
+  }
+
+  close() {
+    this.dataChannel?.close();
+    this.peerConnection?.close();
+  }
+
+  // Callbacks
+  onConnected = null;
+  onDisconnected = null;
+  onGameStateReceived = null;
+}
+```
+
+#### Key Implementation Notes
+
+1. **Message Queuing**: ICE candidates must be queued until the remote SDP is set, otherwise `addIceCandidate` will fail.
+
+2. **Host Detection**: The host check (`hosting`/`hostingreply`) ensures the peer is ready before initiating ICE.
+
+3. **TURN Credentials**: The client sends TURN server credentials in the `ice` message so both peers use the same TURN server.
+
+4. **Base64 Encoding**: All signaling messages are Base64 encoded to safely transmit over the WebSocket text protocol.
+
+5. **Gathering Complete**: The `done` message signals that ICE candidate gathering is complete, allowing the peer to finalize the connection.
+
+6. **Timeout Handling**: Implement timeouts for each signaling phase:
+   - Host check: 10 seconds
+   - ICE connection: 30 seconds
+   - Total connection: 60 seconds
 
 ### Error Handling & Reconnection
 
@@ -1036,8 +1516,8 @@ Track multiplayer-specific stats in AGS:
 5. **P2P Connection**
    - Implement TURN server selection
    - Fetch TURN credentials
-   - Build WebRTC peer connection
-   - Implement signaling via session attributes
+   - Implement P2P signaling via Lobby WebSocket (`signalingP2PNotif`)
+   - Build WebRTC peer connection with ICE candidate queuing
    - Establish RTCDataChannel
 
 6. **Multiplayer Game Logic**
@@ -1306,6 +1786,10 @@ namespace={namespace}
 - [AGS Lobby & WebSockets](https://docs.accelbyte.io/gaming-services/services/play/lobby/lobby-websocket/)
 - [WebSocket Reconnection Strategy](https://docs.accelbyte.io/gaming-services/knowledge-base/sdk-tools/sdk-guides/websocket-reconnection-strategy/)
 
+### Reference Implementations
+- [AccelByte Unreal Network Utilities](https://github.com/AccelByte/accelbyte-unreal-network-utilities) - Reference for P2P signaling protocol and ICE implementation
+- [AccelByte Unreal SDK - Lobby API](https://github.com/AccelByte/accelbyte-unreal-sdk-plugin) - Contains `SendSignalingMessage` and signaling delegate handling
+
 ## Appendices
 
 ### Appendix A: Game Constants
@@ -1404,7 +1888,42 @@ const MULTIPLAYER_CONFIG = {
   // Timeouts
   SIGNALING_TIMEOUT_MS: 10000,
   ICE_GATHERING_TIMEOUT_MS: 5000,
-  CONNECTION_TIMEOUT_MS: 15000
+  CONNECTION_TIMEOUT_MS: 15000,
+
+  // Latency thresholds (ms) for connection quality indicator
+  LATENCY_EXCELLENT: 50,
+  LATENCY_GOOD: 100,
+  LATENCY_FAIR: 200
+};
+
+// Multiplayer UI States
+const MultiplayerState = {
+  IDLE: 'IDLE',
+  QUEUING: 'QUEUING',
+  MATCHED: 'MATCHED',
+  JOINING: 'JOINING',
+  CONNECTING: 'CONNECTING',
+  PLAYING: 'PLAYING',
+  RECONNECTING: 'RECONNECTING',
+  FINISHED: 'FINISHED'
+};
+
+// P2P Connection Sub-states (within CONNECTING)
+const P2PConnectionState = {
+  HOST_CHECK: 'HOST_CHECK',
+  ICE_OFFER: 'ICE_OFFER',
+  SDP_EXCHANGE: 'SDP_EXCHANGE',
+  GATHERING: 'GATHERING',
+  ESTABLISHING: 'ESTABLISHING',
+  CONNECTED: 'CONNECTED',
+  FAILED: 'FAILED'
+};
+
+// Connection types (determined from ICE candidate)
+const ConnectionType = {
+  DIRECT: 'host',    // Direct local connection
+  STUN: 'srflx',     // Server reflexive (NAT traversal via STUN)
+  RELAY: 'relay'     // Relayed through TURN server
 };
 ```
 
@@ -1451,9 +1970,329 @@ const MULTIPLAYER_CONFIG = {
 └─────────────┘
 ```
 
+### Appendix F: Multiplayer UI State Manager
+
+```javascript
+/**
+ * Manages multiplayer UI state and renders appropriate overlays
+ */
+class MultiplayerUIManager {
+  constructor(canvasContainer) {
+    this.container = canvasContainer;
+    this.state = MultiplayerState.IDLE;
+    this.p2pState = null;
+    this.connectionInfo = null;
+    this.overlay = null;
+  }
+
+  setState(newState, data = {}) {
+    this.state = newState;
+    this._render(data);
+  }
+
+  setP2PState(newState) {
+    this.p2pState = newState;
+    if (this.state === MultiplayerState.CONNECTING) {
+      this._renderP2POverlay();
+    }
+  }
+
+  setConnectionInfo(info) {
+    // info: { type: 'host'|'srflx'|'relay', latency: number }
+    this.connectionInfo = info;
+    this._updateConnectionIndicator();
+  }
+
+  _render(data) {
+    this._removeOverlay();
+
+    switch (this.state) {
+      case MultiplayerState.IDLE:
+        // Show "Find Match" button (handled by main UI)
+        break;
+
+      case MultiplayerState.QUEUING:
+        this._showOverlay({
+          title: 'Searching for opponent...',
+          showSpinner: true,
+          buttons: [{ label: 'Cancel', action: 'cancel' }]
+        });
+        break;
+
+      case MultiplayerState.MATCHED:
+        this._showOverlay({
+          title: 'Match found!',
+          subtitle: `Opponent: ${data.opponentName || 'Player'}`,
+          showSpinner: false
+        });
+        break;
+
+      case MultiplayerState.JOINING:
+        this._showOverlay({
+          title: 'Joining session...',
+          showSpinner: true
+        });
+        break;
+
+      case MultiplayerState.CONNECTING:
+        this.p2pState = P2PConnectionState.HOST_CHECK;
+        this._renderP2POverlay();
+        break;
+
+      case MultiplayerState.PLAYING:
+        // Game is active, show connection indicator only
+        this._showConnectionIndicator();
+        break;
+
+      case MultiplayerState.RECONNECTING:
+        this._showOverlay({
+          title: 'Reconnecting...',
+          subtitle: 'Please wait',
+          showSpinner: true,
+          transparent: true  // Show game behind overlay
+        });
+        break;
+
+      case MultiplayerState.FINISHED:
+        this._showOverlay({
+          title: data.won ? 'You Win!' : 'Game Over',
+          subtitle: `Final Score: ${data.yourScore} - ${data.opponentScore}`,
+          buttons: [
+            { label: 'Play Again', action: 'rematch' },
+            { label: 'Return to Menu', action: 'menu' }
+          ]
+        });
+        break;
+    }
+  }
+
+  _renderP2POverlay() {
+    const steps = [
+      { state: P2PConnectionState.HOST_CHECK, text: 'Checking peer status...' },
+      { state: P2PConnectionState.ICE_OFFER, text: 'Exchanging connection info...' },
+      { state: P2PConnectionState.SDP_EXCHANGE, text: 'Exchanging connection info...' },
+      { state: P2PConnectionState.GATHERING, text: 'Gathering network paths...' },
+      { state: P2PConnectionState.ESTABLISHING, text: 'Establishing connection...' }
+    ];
+
+    const currentIndex = steps.findIndex(s => s.state === this.p2pState);
+
+    const stepsHtml = steps.map((step, i) => {
+      let icon, status;
+      if (i < currentIndex) {
+        icon = '●'; status = 'complete';
+      } else if (i === currentIndex) {
+        icon = '◌'; status = 'active';
+      } else {
+        icon = '○'; status = 'pending';
+      }
+      return `<div class="p2p-step ${status}">${icon} ${step.text}</div>`;
+    }).join('');
+
+    this._showOverlay({
+      title: 'Connecting to opponent',
+      content: `<div class="p2p-steps">${stepsHtml}</div>`,
+      buttons: [{ label: 'Cancel', action: 'cancel' }]
+    });
+  }
+
+  showError(error) {
+    const errorMessages = {
+      'HOST_TIMEOUT': {
+        title: 'Connection Failed',
+        message: 'Opponent not responding. Please try again.'
+      },
+      'ICE_FAILED': {
+        title: 'Network Error',
+        message: 'Could not establish connection. Check your network.'
+      },
+      'CONNECTION_TIMEOUT': {
+        title: 'Connection Timed Out',
+        message: 'Connection took too long to establish.'
+      },
+      'PEER_DISCONNECTED': {
+        title: 'Opponent Disconnected',
+        message: 'Your opponent has left the match.'
+      },
+      'TURN_UNAVAILABLE': {
+        title: 'Server Error',
+        message: 'Could not connect to relay server.'
+      }
+    };
+
+    const err = errorMessages[error] || {
+      title: 'Error',
+      message: 'An unexpected error occurred.'
+    };
+
+    this._showOverlay({
+      title: `⚠️ ${err.title}`,
+      subtitle: err.message,
+      buttons: [
+        { label: 'Retry', action: 'retry' },
+        { label: 'Return to Menu', action: 'menu' }
+      ]
+    });
+  }
+
+  _showConnectionIndicator() {
+    if (!this.connectionInfo) return;
+
+    const { type, latency } = this.connectionInfo;
+
+    // Determine connection type display
+    const typeDisplay = {
+      'host': { icon: '🟢', label: 'Direct' },
+      'srflx': { icon: '🟡', label: 'STUN' },
+      'relay': { icon: '🟠', label: 'Relay' }
+    }[type] || { icon: '⚪', label: 'Unknown' };
+
+    // Create or update indicator element
+    let indicator = document.getElementById('connection-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'connection-indicator';
+      indicator.className = 'connection-indicator';
+      this.container.appendChild(indicator);
+    }
+
+    indicator.innerHTML = `${typeDisplay.icon} ${typeDisplay.label} ${latency}ms`;
+  }
+
+  _updateConnectionIndicator() {
+    if (this.state === MultiplayerState.PLAYING) {
+      this._showConnectionIndicator();
+    }
+  }
+
+  _showOverlay(options) {
+    this._removeOverlay();
+
+    this.overlay = document.createElement('div');
+    this.overlay.className = `mp-overlay ${options.transparent ? 'transparent' : ''}`;
+
+    let html = `<div class="mp-overlay-content">`;
+    html += `<h2>${options.title}</h2>`;
+
+    if (options.subtitle) {
+      html += `<p>${options.subtitle}</p>`;
+    }
+
+    if (options.showSpinner) {
+      html += `<div class="spinner"></div>`;
+    }
+
+    if (options.content) {
+      html += options.content;
+    }
+
+    if (options.buttons) {
+      html += `<div class="mp-buttons">`;
+      options.buttons.forEach(btn => {
+        html += `<button data-action="${btn.action}">${btn.label}</button>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    this.overlay.innerHTML = html;
+
+    // Attach button handlers
+    this.overlay.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.onAction?.(btn.dataset.action);
+      });
+    });
+
+    this.container.appendChild(this.overlay);
+  }
+
+  _removeOverlay() {
+    if (this.overlay) {
+      this.overlay.remove();
+      this.overlay = null;
+    }
+  }
+
+  // Callback for button actions
+  onAction = null;
+}
+```
+
+### Appendix G: Connection Type Detection
+
+```javascript
+/**
+ * Determine connection type from ICE candidate
+ * @param {RTCIceCandidate} candidate - Selected ICE candidate
+ * @returns {string} Connection type: 'host', 'srflx', 'prflx', or 'relay'
+ */
+function getConnectionType(candidate) {
+  if (!candidate) return 'unknown';
+
+  // Parse candidate string or use candidateType property
+  const candidateStr = candidate.candidate || '';
+
+  if (candidateStr.includes('typ host') || candidate.type === 'host') {
+    return 'host';  // Direct connection
+  }
+  if (candidateStr.includes('typ srflx') || candidate.type === 'srflx') {
+    return 'srflx';  // STUN (server reflexive)
+  }
+  if (candidateStr.includes('typ prflx') || candidate.type === 'prflx') {
+    return 'prflx';  // Peer reflexive
+  }
+  if (candidateStr.includes('typ relay') || candidate.type === 'relay') {
+    return 'relay';  // TURN relay
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Get connection info after P2P connection is established
+ * @param {RTCPeerConnection} peerConnection
+ * @returns {Promise<{type: string, latency: number}>}
+ */
+async function getConnectionInfo(peerConnection) {
+  const stats = await peerConnection.getStats();
+  let connectionType = 'unknown';
+  let latency = 0;
+
+  stats.forEach(report => {
+    // Get selected candidate pair
+    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+      latency = report.currentRoundTripTime
+        ? Math.round(report.currentRoundTripTime * 1000)
+        : 0;
+    }
+
+    // Get local candidate type
+    if (report.type === 'local-candidate' && report.isRemote === false) {
+      connectionType = report.candidateType || connectionType;
+    }
+  });
+
+  return { type: connectionType, latency };
+}
+
+/**
+ * Start periodic latency monitoring
+ * @param {RTCPeerConnection} peerConnection
+ * @param {function} onUpdate - Callback with updated latency
+ * @returns {number} Interval ID for cleanup
+ */
+function startLatencyMonitor(peerConnection, onUpdate) {
+  return setInterval(async () => {
+    const info = await getConnectionInfo(peerConnection);
+    onUpdate(info);
+  }, 1000);  // Update every second
+}
+```
+
 ---
 
-**Document Version:** 2.1
-**Last Updated:** 2025-12-05
+**Document Version:** 2.3
+**Last Updated:** 2025-12-06
 **Author:** Technical Specification
-**Status:** Draft - Multiplayer Update (Notification format verified)
+**Status:** Draft - P2P UI States Added

@@ -723,6 +723,13 @@ body {
   font-size: 0.9rem;
 }
 
+.match-rules {
+  color: var(--accent-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
 .match-found-panel .btn {
   margin-top: 8px;
 }
@@ -780,6 +787,233 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* P2P Connection Overlay */
+.p2p-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 15, 26, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.p2p-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.p2p-overlay-content {
+  text-align: center;
+  max-width: 320px;
+}
+
+.p2p-status-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.p2p-status-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.p2p-status-message {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+/* P2P Progress Steps */
+.p2p-progress-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.p2p-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.p2p-step-indicator {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.p2p-step.active .p2p-step-indicator {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.p2p-step.completed .p2p-step-indicator {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+.p2p-step.error .p2p-step-indicator {
+  background: var(--error-color);
+  border-color: var(--error-color);
+  color: white;
+}
+
+.p2p-step-label {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  max-width: 60px;
+  text-align: center;
+}
+
+.p2p-step.active .p2p-step-label {
+  color: var(--accent-primary);
+}
+
+.p2p-step.completed .p2p-step-label {
+  color: var(--accent-primary);
+}
+
+.p2p-step-connector {
+  width: 24px;
+  height: 2px;
+  background: var(--border-color);
+  margin-bottom: 18px;
+}
+
+.p2p-step-connector.active {
+  background: var(--accent-primary);
+}
+
+/* P2P Spinner */
+.p2p-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+/* P2P Error State */
+.p2p-overlay.error .p2p-status-icon {
+  color: var(--error-color);
+}
+
+.p2p-overlay.error .p2p-status-title {
+  color: var(--error-color);
+}
+
+.p2p-retry-btn {
+  margin-top: 12px;
+}
+
+/* Connection Quality Indicator (in-game) */
+.connection-quality-display {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+.connection-type {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.connection-type-icon {
+  font-size: 0.9rem;
+}
+
+.connection-type.direct .connection-type-icon {
+  color: var(--success-color);
+}
+
+.connection-type.relay .connection-type-icon {
+  color: #ffaa00;
+}
+
+.connection-latency {
+  font-family: monospace;
+  color: var(--text-primary);
+}
+
+.connection-latency.good {
+  color: var(--success-color);
+}
+
+.connection-latency.medium {
+  color: #ffaa00;
+}
+
+.connection-latency.poor {
+  color: var(--error-color);
+}
+
+/* Role Badge */
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.role-badge.host {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+}
+
+.role-badge.guest {
+  background: rgba(0, 102, 255, 0.15);
+  color: var(--accent-secondary);
+  border: 1px solid var(--accent-secondary);
+}
+
+/* Canvas container - add relative positioning for overlay */
+.canvas-container {
+  position: relative;
 }
 
 /* Footer */

@@ -193,10 +193,13 @@ func main() {
 		logrus.Fatalf("Failed to create gRPC-Gateway: %v", err)
 	}
 
+	// Create TURN proxy handler
+	turnProxy := NewTURNProxyHandler(configRepo, tokenRepo)
+
 	// Start the gRPC-Gateway HTTP server
 	go func() {
 		swaggerDir := "gateway/apidocs" // Path to swagger directory
-		grpcGatewayHTTPServer := newGRPCGatewayHTTPServer(fmt.Sprintf(":%d", grpcGatewayHTTPPort), grpcGateway, logrus.New(), swaggerDir)
+		grpcGatewayHTTPServer := newGRPCGatewayHTTPServer(fmt.Sprintf(":%d", grpcGatewayHTTPPort), grpcGateway, logrus.New(), swaggerDir, turnProxy)
 		logrus.Infof("Starting gRPC-Gateway HTTP server on port %d", grpcGatewayHTTPPort)
 		if err := grpcGatewayHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logrus.Fatalf("Failed to run gRPC-Gateway HTTP server: %v", err)
@@ -267,6 +270,7 @@ func main() {
 
 func newGRPCGatewayHTTPServer(
 	addr string, grpcGateway http.Handler, logger *logrus.Logger, swaggerDir string,
+	turnProxy *TURNProxyHandler,
 ) *http.Server {
 	// Create a new ServeMux
 	mux := http.NewServeMux()
@@ -274,6 +278,13 @@ func newGRPCGatewayHTTPServer(
 	// Serve Swagger UI and JSON
 	serveSwaggerUI(mux)
 	serveSwaggerJSON(mux, swaggerDir)
+
+	// Register TURN proxy endpoints
+	if turnProxy != nil {
+		mux.HandleFunc(basePath+"/turn-servers", turnProxy.GetTURNServers)
+		mux.HandleFunc(basePath+"/turn-credentials/", turnProxy.GetTURNCredentials)
+		logrus.Infof("Registered TURN proxy endpoints at %s/turn-servers and %s/turn-credentials/", basePath, basePath)
+	}
 
 	// Create combined handler for API and static files
 	staticHandler := createStaticHandler()
@@ -367,6 +378,127 @@ func serveSwaggerJSON(mux *http.ServeMux, swaggerDir string) {
 	})
 	apidocsPath := fmt.Sprintf("%s/apidocs/api.json", basePath)
 	mux.Handle(apidocsPath, fileHandler)
+}
+
+// TURNProxyHandler handles proxying TURN server requests to AGS
+type TURNProxyHandler struct {
+	configRepo repository.ConfigRepository
+	tokenRepo  repository.TokenRepository
+}
+
+func NewTURNProxyHandler(configRepo repository.ConfigRepository, tokenRepo repository.TokenRepository) *TURNProxyHandler {
+	return &TURNProxyHandler{
+		configRepo: configRepo,
+		tokenRepo:  tokenRepo,
+	}
+}
+
+// GetTURNServers proxies the request to AGS /turnmanager/turn
+func (h *TURNProxyHandler) GetTURNServers(w http.ResponseWriter, r *http.Request) {
+	agsBaseURL := h.configRepo.GetJusticeBaseUrl()
+	targetURL := fmt.Sprintf("%s/turnmanager/turn", agsBaseURL)
+
+	token, err := h.tokenRepo.GetToken()
+	if err != nil || token == nil {
+		http.Error(w, "Failed to get access token", http.StatusInternalServerError)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	// Use the user's token from the Authorization header if present, otherwise use client token
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	} else {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token.AccessToken))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Errorf("TURN proxy error: %v", err)
+		http.Error(w, "Failed to fetch TURN servers", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers and body
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = copyResponseBody(w, resp)
+}
+
+// GetTURNCredentials proxies the request to AGS /turnmanager/turn/secret/{region}/{ip}/{port}
+func (h *TURNProxyHandler) GetTURNCredentials(w http.ResponseWriter, r *http.Request) {
+	// Extract path parameters from URL
+	// Expected path: /turn-credentials/{region}/{ip}/{port}
+	path := strings.TrimPrefix(r.URL.Path, basePath+"/turn-credentials/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 3 {
+		http.Error(w, "Invalid path: expected /turn-credentials/{region}/{ip}/{port}", http.StatusBadRequest)
+		return
+	}
+	region, ip, port := parts[0], parts[1], parts[2]
+
+	agsBaseURL := h.configRepo.GetJusticeBaseUrl()
+	targetURL := fmt.Sprintf("%s/turnmanager/turn/secret/%s/%s/%s", agsBaseURL, region, ip, port)
+
+	token, err := h.tokenRepo.GetToken()
+	if err != nil || token == nil {
+		http.Error(w, "Failed to get access token", http.StatusInternalServerError)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	// Use the user's token from the Authorization header if present
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	} else {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token.AccessToken))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Errorf("TURN credentials proxy error: %v", err)
+		http.Error(w, "Failed to fetch TURN credentials", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = copyResponseBody(w, resp)
+}
+
+func copyResponseBody(w http.ResponseWriter, resp *http.Response) (int64, error) {
+	buf := make([]byte, 32*1024)
+	var written int64
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			nw, writeErr := w.Write(buf[:n])
+			written += int64(nw)
+			if writeErr != nil {
+				return written, writeErr
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	return written, nil
 }
 
 func createStaticHandler() http.Handler {

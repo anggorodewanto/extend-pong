@@ -17,6 +17,18 @@ const MultiplayerState = {
   ERROR: 'error'
 };
 
+// P2P Connection Sub-states (for UI overlay)
+const P2PState = {
+  IDLE: 'IDLE',
+  HOST_CHECK: 'HOST_CHECK',
+  ICE_OFFER: 'ICE_OFFER',
+  SDP_EXCHANGE: 'SDP_EXCHANGE',
+  GATHERING: 'GATHERING',
+  ESTABLISHING: 'ESTABLISHING',
+  CONNECTED: 'CONNECTED',
+  FAILED: 'FAILED'
+};
+
 class LobbyWebSocket {
   constructor(baseUrl, namespace, accessToken) {
     this.baseUrl = baseUrl;
@@ -218,6 +230,7 @@ class PongMultiplayer {
 
   constructor() {
     this.state = MultiplayerState.IDLE;
+    this.p2pState = P2PState.IDLE;
     this.lobby = null;
     this.currentTicketId = null;
     this.currentSessionId = null;
@@ -227,8 +240,25 @@ class PongMultiplayer {
     this.peerConnection = null;
     this.dataChannel = null;
 
+    // P2P signaling state
+    this.pendingCandidates = [];
+    this.isRemoteDescriptionSet = false;
+    this.turnServer = null;
+    this.turnCredentials = null;
+    this.signalingTimeoutId = null;
+    this.hostCheckRetries = 0;
+    this.maxHostCheckRetries = 3;
+
+    // Connection quality
+    this.connectionInfo = {
+      type: 'unknown',
+      latency: 0
+    };
+    this.latencyMonitorInterval = null;
+
     // Event handlers
     this.onStateChange = null;
+    this.onP2PStateChange = null;     // Called when P2P sub-state changes
     this.onMatchmakingStarted = null; // Called when matchmaking ticket is accepted
     this.onMatchFound = null;         // Called when a match is found
     this.onMatchmakingExpired = null; // Called when matchmaking ticket expires
@@ -240,6 +270,7 @@ class PongMultiplayer {
     this.onP2PConnected = null;
     this.onP2PDisconnected = null;
     this.onGameStateReceived = null;
+    this.onConnectionInfoUpdate = null; // Called when connection quality changes
     this.onError = null;
   }
 
@@ -253,8 +284,21 @@ class PongMultiplayer {
     }
   }
 
+  _setP2PState(newState) {
+    const oldState = this.p2pState;
+    this.p2pState = newState;
+    console.log(`[Multiplayer] P2P State: ${oldState} -> ${newState}`);
+    if (this.onP2PStateChange) {
+      this.onP2PStateChange(newState, oldState);
+    }
+  }
+
   getState() {
     return this.state;
+  }
+
+  getP2PState() {
+    return this.p2pState;
   }
 
   // Lobby Connection
@@ -298,13 +342,16 @@ class PongMultiplayer {
     this.lobby.on('messageNotif', (data) => this._handleNotification(data));
     this.lobby.on('messageSessionNotif', (data) => this._handleNotification(data));
 
+    // P2P signaling via Lobby WebSocket
+    this.lobby.on('signalingP2PNotif', (data) => this._handleSignalingMessage(data));
+
     // Connection events
     this.lobby.on('disconnected', (data) => this._handleLobbyDisconnect(data));
 
     // Catch-all for debugging unhandled messages
     this.lobby.on('message', (data) => {
       const type = data.type || data.code;
-      const handledTypes = ['connectNotif', 'heartbeat', 'disconnected', 'messageNotif', 'messageSessionNotif'];
+      const handledTypes = ['connectNotif', 'heartbeat', 'disconnected', 'messageNotif', 'messageSessionNotif', 'signalingP2PNotif'];
       if (type && !handledTypes.includes(type)) {
         console.warn('[Multiplayer] Unhandled message type:', type, data);
       }
@@ -768,7 +815,6 @@ class PongMultiplayer {
 
     if (attributes) {
       this.currentSession.attributes = { ...this.currentSession.attributes, ...attributes };
-      this._processSignalingFromAttributes(attributes);
     }
     if (members) {
       this.currentSession.members = members;
@@ -874,8 +920,9 @@ class PongMultiplayer {
 
   // Update session info from fetched data
   _updateSessionInfo(session) {
-    // Update host status
-    this.isHost = session.leaderId === pongAPI.userId;
+    // Update host status (AGS uses 'leaderID' field for session leader)
+    const leaderId = session.leaderID || session.leaderId || session.leader;
+    this.isHost = leaderId === pongAPI.userId;
 
     // Update opponent info
     const members = session.members || [];
@@ -883,6 +930,8 @@ class PongMultiplayer {
 
     console.log('[Multiplayer] Session info updated:', {
       sessionId: session.id,
+      leaderId: leaderId,
+      myUserId: pongAPI.userId,
       isHost: this.isHost,
       opponent: this.opponentInfo,
       memberCount: members.length
@@ -922,11 +971,11 @@ class PongMultiplayer {
     this.isHost = false;
   }
 
-  // TURN Credentials
+  // TURN Credentials - fetched via backend proxy to avoid CORS issues
   async getTurnServers() {
     try {
       const response = await fetch(
-        `${CONFIG.AGS_BASE_URL}/turnmanager/turn`,
+        `${CONFIG.BACKEND_URL}/turn-servers`,
         {
           headers: {
             'Authorization': `Bearer ${pongAPI.accessToken}`
@@ -935,13 +984,16 @@ class PongMultiplayer {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to get TURN servers: ${response.status}`);
+        // TURN is optional - STUN fallback will be used
+        console.log('[Multiplayer] TURN servers unavailable, using STUN fallback');
+        return [];
       }
 
       return await response.json();
 
     } catch (error) {
-      console.error('[Multiplayer] Failed to get TURN servers:', error);
+      // TURN fetch failed (likely no proxy endpoint) - use STUN fallback silently
+      console.log('[Multiplayer] TURN servers unavailable, using STUN fallback');
       return [];
     }
   }
@@ -949,7 +1001,7 @@ class PongMultiplayer {
   async getTurnCredentials(region, ip, port) {
     try {
       const response = await fetch(
-        `${CONFIG.AGS_BASE_URL}/turnmanager/turn/secret/${region}/${ip}/${port}`,
+        `${CONFIG.BACKEND_URL}/turn-credentials/${region}/${ip}/${port}`,
         {
           headers: {
             'Authorization': `Bearer ${pongAPI.accessToken}`
@@ -958,24 +1010,28 @@ class PongMultiplayer {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to get TURN credentials: ${response.status}`);
+        return null;
       }
 
       return await response.json();
 
     } catch (error) {
-      console.error('[Multiplayer] Failed to get TURN credentials:', error);
+      console.log('[Multiplayer] TURN credentials unavailable');
       return null;
     }
   }
 
-  // P2P Connection
+  // P2P Connection via Lobby WebSocket Signaling (signalingP2PNotif)
   async _initiateP2PConnection() {
     if (this.state === MultiplayerState.CONNECTING_P2P || this.state === MultiplayerState.PLAYING) {
       return;
     }
 
     this._setState(MultiplayerState.CONNECTING_P2P);
+    this._setP2PState(P2PState.HOST_CHECK);
+    this.pendingCandidates = [];
+    this.isRemoteDescriptionSet = false;
+    this.hostCheckRetries = 0;
 
     try {
       // Get TURN servers and credentials
@@ -983,16 +1039,20 @@ class PongMultiplayer {
       let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }]; // Fallback STUN
 
       if (servers && servers.length > 0) {
-        const server = servers[0];
-        const credentials = await this.getTurnCredentials(server.region, server.ip, server.port);
+        this.turnServer = servers[0];
+        this.turnCredentials = await this.getTurnCredentials(
+          this.turnServer.region,
+          this.turnServer.ip,
+          this.turnServer.port
+        );
 
-        if (credentials) {
+        if (this.turnCredentials) {
           iceServers = [
-            { urls: `stun:${server.ip}:${server.port}` },
+            { urls: `stun:${this.turnServer.ip}:${this.turnServer.port}` },
             {
-              urls: `turn:${server.ip}:${server.port}`,
-              username: credentials.username,
-              credential: credentials.password
+              urls: `turn:${this.turnServer.ip}:${this.turnServer.port}`,
+              username: this.turnCredentials.username,
+              credential: this.turnCredentials.password
             }
           ];
         }
@@ -1002,94 +1062,23 @@ class PongMultiplayer {
 
       // Create peer connection
       this.peerConnection = new RTCPeerConnection({ iceServers });
+      this._setupPeerConnectionHandlers();
 
-      this.peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          this._sendSignaling({
-            type: 'ice-candidate',
-            candidate: event.candidate.toJSON()
-          });
-        }
-      };
+      // Set signaling timeout
+      this._startSignalingTimeout();
 
-      this.peerConnection.onconnectionstatechange = () => {
-        const connectionState = this.peerConnection?.connectionState;
-        console.log('[Multiplayer] Connection state:', connectionState);
-
-        switch (connectionState) {
-          case 'connected':
-            this._setState(MultiplayerState.PLAYING);
-            if (this.onP2PConnected) {
-              this.onP2PConnected();
-            }
-            break;
-
-          case 'disconnected':
-            console.log('[Multiplayer] P2P connection disconnected, waiting for recovery...');
-            // Brief disconnection - may recover automatically
-            // Keep state as PLAYING for a moment to allow ICE restart
-            if (this.onP2PDisconnected) {
-              this.onP2PDisconnected({ recoverable: true });
-            }
-            break;
-
-          case 'failed':
-            console.log('[Multiplayer] P2P connection failed');
-            if (this.onP2PDisconnected) {
-              this.onP2PDisconnected({ recoverable: false });
-            }
-
-            // Connection failed - opponent likely disconnected
-            if (this.state === MultiplayerState.PLAYING) {
-              this._setState(MultiplayerState.FINISHED);
-              if (this.onOpponentLeft) {
-                this.onOpponentLeft({
-                  userId: this.opponentInfo?.id,
-                  reason: 'connection_failed'
-                });
-              }
-            } else {
-              this._setState(MultiplayerState.ERROR);
-            }
-            break;
-
-          case 'closed':
-            console.log('[Multiplayer] P2P connection closed');
-            // Clean close - already handled elsewhere
-            break;
-        }
-      };
-
-      // Also monitor ICE connection state for faster detection
-      this.peerConnection.oniceconnectionstatechange = () => {
-        const iceState = this.peerConnection?.iceConnectionState;
-        console.log('[Multiplayer] ICE connection state:', iceState);
-
-        if (iceState === 'failed') {
-          console.log('[Multiplayer] ICE connection failed');
-          // ICE failed before connection established
-          if (this.state === MultiplayerState.CONNECTING_P2P) {
-            this._setState(MultiplayerState.ERROR);
-            if (this.onError) {
-              this.onError('Failed to establish peer connection');
-            }
-          }
-        }
-      };
-
-      this.peerConnection.ondatachannel = (event) => {
-        console.log('[Multiplayer] Data channel received');
-        this.dataChannel = event.channel;
-        this._setupDataChannel();
-      };
-
-      // Host creates offer, guest waits for offer
+      // Start the signaling flow based on role
       if (this.isHost) {
-        await this._createOffer();
+        // Host waits for guest's hosting check
+        console.log('[Multiplayer] Host waiting for guest connection...');
+      } else {
+        // Guest initiates by checking if host is ready
+        this._sendHostingCheck();
       }
 
     } catch (error) {
       console.error('[Multiplayer] P2P connection failed:', error);
+      this._setP2PState(P2PState.FAILED);
       this._setState(MultiplayerState.ERROR);
       if (this.onError) {
         this.onError('P2P connection failed: ' + error.message);
@@ -1097,8 +1086,274 @@ class PongMultiplayer {
     }
   }
 
-  async _createOffer() {
-    // Create data channel (host only)
+  _setupPeerConnectionHandlers() {
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this._sendSignalingViews('candidate', event.candidate.candidate);
+      }
+    };
+
+    this.peerConnection.onicegatheringstatechange = () => {
+      const gatheringState = this.peerConnection?.iceGatheringState;
+      console.log('[Multiplayer] ICE gathering state:', gatheringState);
+
+      if (gatheringState === 'gathering') {
+        this._setP2PState(P2PState.GATHERING);
+      } else if (gatheringState === 'complete') {
+        this._sendSignalingViews('done', '');
+      }
+    };
+
+    this.peerConnection.onconnectionstatechange = () => {
+      const connectionState = this.peerConnection?.connectionState;
+      console.log('[Multiplayer] Connection state:', connectionState);
+
+      switch (connectionState) {
+        case 'connected':
+          this._clearSignalingTimeout();
+          this._setP2PState(P2PState.CONNECTED);
+          this._setState(MultiplayerState.PLAYING);
+          this._startLatencyMonitor();
+          this._detectConnectionType();
+          if (this.onP2PConnected) {
+            this.onP2PConnected();
+          }
+          break;
+
+        case 'disconnected':
+          console.log('[Multiplayer] P2P connection disconnected, waiting for recovery...');
+          if (this.onP2PDisconnected) {
+            this.onP2PDisconnected({ recoverable: true });
+          }
+          break;
+
+        case 'failed':
+          console.log('[Multiplayer] P2P connection failed');
+          this._setP2PState(P2PState.FAILED);
+          if (this.onP2PDisconnected) {
+            this.onP2PDisconnected({ recoverable: false });
+          }
+
+          if (this.state === MultiplayerState.PLAYING) {
+            this._setState(MultiplayerState.FINISHED);
+            if (this.onOpponentLeft) {
+              this.onOpponentLeft({
+                userId: this.opponentInfo?.id,
+                reason: 'connection_failed'
+              });
+            }
+          } else {
+            this._setState(MultiplayerState.ERROR);
+            if (this.onError) {
+              this.onError('Failed to establish peer connection');
+            }
+          }
+          break;
+
+        case 'closed':
+          console.log('[Multiplayer] P2P connection closed');
+          break;
+      }
+    };
+
+    this.peerConnection.oniceconnectionstatechange = () => {
+      const iceState = this.peerConnection?.iceConnectionState;
+      console.log('[Multiplayer] ICE connection state:', iceState);
+
+      if (iceState === 'checking') {
+        this._setP2PState(P2PState.ESTABLISHING);
+      } else if (iceState === 'failed' && this.state === MultiplayerState.CONNECTING_P2P) {
+        this._setP2PState(P2PState.FAILED);
+        this._setState(MultiplayerState.ERROR);
+        if (this.onError) {
+          this.onError('ICE connection failed');
+        }
+      }
+    };
+
+    this.peerConnection.ondatachannel = (event) => {
+      console.log('[Multiplayer] Data channel received');
+      this.dataChannel = event.channel;
+      this._setupDataChannel();
+    };
+  }
+
+  _startSignalingTimeout() {
+    this._clearSignalingTimeout();
+    this.signalingTimeoutId = setTimeout(() => {
+      if (this.state === MultiplayerState.CONNECTING_P2P) {
+        console.error('[Multiplayer] Signaling timeout');
+        this._setP2PState(P2PState.FAILED);
+        this._setState(MultiplayerState.ERROR);
+        if (this.onError) {
+          this.onError('Connection timed out');
+        }
+      }
+    }, CONFIG.MULTIPLAYER.CONNECTION_TIMEOUT_MS);
+  }
+
+  _clearSignalingTimeout() {
+    if (this.signalingTimeoutId) {
+      clearTimeout(this.signalingTimeoutId);
+      this.signalingTimeoutId = null;
+    }
+  }
+
+  // Signaling via Lobby WebSocket (signalingP2PNotif)
+  _sendSignalingViews(type, data, turnServer = null) {
+    if (!this.lobby || !this.lobby.isConnected || !this.opponentInfo) {
+      console.warn('[Multiplayer] Cannot send signaling: no connection or opponent');
+      return;
+    }
+
+    const peerId = this.opponentInfo.id;
+    const message = {
+      Type: type,
+      Channel: 0,
+      Data: data
+    };
+
+    // Include TURN server in ICE offer
+    if (turnServer) {
+      message.TurnServer = {
+        Host: turnServer.ip,
+        Port: turnServer.port,
+        Username: this.turnCredentials?.username || '',
+        Password: this.turnCredentials?.password || ''
+      };
+    }
+
+    const jsonString = JSON.stringify(message);
+    const base64Message = btoa(jsonString);
+    const messageId = `signaling-${Date.now()}`;
+
+    const rawMessage = [
+      'type: signalingP2PNotif',
+      `id: ${messageId}`,
+      `destinationId: ${peerId}`,
+      `message: ${base64Message}`
+    ].join('\n');
+
+    console.log(`[Multiplayer] Sending signaling: ${type} to ${peerId}`);
+    this.lobby.ws.send(rawMessage);
+  }
+
+  // Handle incoming signaling message
+  _handleSignalingMessage(data) {
+    const peerId = data.destinationId;
+
+    // Verify it's from our opponent
+    if (this.opponentInfo && peerId !== this.opponentInfo.id) {
+      // destinationId in received messages is the sender's ID
+    }
+
+    let decoded;
+    try {
+      decoded = JSON.parse(atob(data.message));
+    } catch (e) {
+      console.error('[Multiplayer] Failed to decode signaling message:', e);
+      return;
+    }
+
+    console.log(`[Multiplayer] Received signaling: ${decoded.Type}`);
+
+    switch (decoded.Type) {
+      case 'hosting':
+        this._handleHostingCheck(peerId);
+        break;
+      case 'hostingreply':
+        this._handleHostingReply(peerId, decoded.Data, decoded.TurnServer);
+        break;
+      case 'ice':
+        this._handleIceOffer(peerId, decoded);
+        break;
+      case 'sdp':
+        this._handleSdpMessage(peerId, decoded.Data);
+        break;
+      case 'candidate':
+        this._handleCandidateMessage(peerId, decoded.Data);
+        break;
+      case 'done':
+        this._handleGatheringDone(peerId);
+        break;
+    }
+  }
+
+  // Step 1: Guest checks if host is ready
+  _sendHostingCheck() {
+    console.log('[Multiplayer] Sending hosting check');
+    this._sendSignalingViews('hosting', '');
+
+    // Retry if no response
+    setTimeout(() => {
+      if (this.p2pState === P2PState.HOST_CHECK && this.hostCheckRetries < this.maxHostCheckRetries) {
+        this.hostCheckRetries++;
+        console.log(`[Multiplayer] Retrying hosting check (${this.hostCheckRetries}/${this.maxHostCheckRetries})`);
+        this._sendHostingCheck();
+      }
+    }, 3000);
+  }
+
+  // Host responds to hosting check
+  _handleHostingCheck(peerId) {
+    if (!this.isHost) return;
+
+    console.log('[Multiplayer] Responding to hosting check');
+    this._sendSignalingViews('hostingreply', 'hosting');
+  }
+
+  // Guest receives hosting reply
+  async _handleHostingReply(peerId, status, turnServer) {
+    if (this.isHost) return;
+    if (status !== 'hosting') {
+      console.warn('[Multiplayer] Host not ready:', status);
+      return;
+    }
+
+    console.log('[Multiplayer] Host confirmed, sending ICE offer');
+    this._setP2PState(P2PState.ICE_OFFER);
+
+    // Send ICE offer with TURN credentials
+    this._sendSignalingViews('ice', 'offer', this.turnServer);
+
+    // Create and send SDP offer
+    await this._createAndSendOffer();
+  }
+
+  // Host receives ICE offer from guest
+  async _handleIceOffer(peerId, decoded) {
+    if (!this.isHost) return;
+
+    console.log('[Multiplayer] Received ICE offer from guest');
+    this._setP2PState(P2PState.SDP_EXCHANGE);
+
+    // Use guest's TURN server if provided
+    if (decoded.TurnServer && decoded.TurnServer.Host) {
+      const newIceServers = [
+        { urls: `stun:${decoded.TurnServer.Host}:${decoded.TurnServer.Port}` },
+        {
+          urls: `turn:${decoded.TurnServer.Host}:${decoded.TurnServer.Port}`,
+          username: decoded.TurnServer.Username,
+          credential: decoded.TurnServer.Password
+        }
+      ];
+
+      // Recreate peer connection with new ICE servers if needed
+      if (this.peerConnection.iceConnectionState === 'new') {
+        this.peerConnection.close();
+        this.peerConnection = new RTCPeerConnection({ iceServers: newIceServers });
+        this._setupPeerConnectionHandlers();
+      }
+    }
+
+    // Host waits for guest's SDP offer
+  }
+
+  // Create and send SDP offer (guest)
+  async _createAndSendOffer() {
+    this._setP2PState(P2PState.SDP_EXCHANGE);
+
+    // Create data channel (guest creates it)
     this.dataChannel = this.peerConnection.createDataChannel(
       CONFIG.MULTIPLAYER.DATA_CHANNEL_NAME,
       {
@@ -1108,42 +1363,79 @@ class PongMultiplayer {
     );
     this._setupDataChannel();
 
-    // Create and send offer
+    // Create and send SDP offer
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
 
-    this._sendSignaling({
-      type: 'offer',
-      sdp: offer.sdp
-    });
+    this._sendSignalingViews('sdp', offer.sdp);
   }
 
-  async _handleOffer(offer) {
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
-      type: 'offer',
-      sdp: offer.sdp
-    }));
+  // Handle received SDP message
+  async _handleSdpMessage(peerId, sdp) {
+    try {
+      if (this.isHost) {
+        // Host receives offer, creates answer
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
+          type: 'offer',
+          sdp: sdp
+        }));
+        this.isRemoteDescriptionSet = true;
 
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
+        // Process queued candidates
+        await this._processQueuedCandidates();
 
-    this._sendSignaling({
-      type: 'answer',
-      sdp: answer.sdp
-    });
-  }
+        const answer = await this.peerConnection.createAnswer();
+        await this.peerConnection.setLocalDescription(answer);
 
-  async _handleAnswer(answer) {
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
-      type: 'answer',
-      sdp: answer.sdp
-    }));
-  }
+        this._sendSignalingViews('sdp', answer.sdp);
+      } else {
+        // Guest receives answer
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
+          type: 'answer',
+          sdp: sdp
+        }));
+        this.isRemoteDescriptionSet = true;
 
-  async _handleIceCandidate(candidate) {
-    if (candidate && this.peerConnection) {
-      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        // Process queued candidates
+        await this._processQueuedCandidates();
+      }
+    } catch (error) {
+      console.error('[Multiplayer] Failed to handle SDP:', error);
     }
+  }
+
+  // Handle received ICE candidate
+  async _handleCandidateMessage(peerId, candidateString) {
+    if (!candidateString) return;
+
+    const candidate = new RTCIceCandidate({ candidate: candidateString, sdpMid: '0', sdpMLineIndex: 0 });
+
+    if (this.isRemoteDescriptionSet) {
+      try {
+        await this.peerConnection.addIceCandidate(candidate);
+      } catch (error) {
+        console.error('[Multiplayer] Failed to add ICE candidate:', error);
+      }
+    } else {
+      // Queue until remote description is set
+      this.pendingCandidates.push(candidate);
+    }
+  }
+
+  async _processQueuedCandidates() {
+    for (const candidate of this.pendingCandidates) {
+      try {
+        await this.peerConnection.addIceCandidate(candidate);
+      } catch (error) {
+        console.error('[Multiplayer] Failed to add queued candidate:', error);
+      }
+    }
+    this.pendingCandidates = [];
+  }
+
+  _handleGatheringDone(peerId) {
+    console.log('[Multiplayer] Peer gathering done');
+    // Connection should be established now
   }
 
   _setupDataChannel() {
@@ -1176,85 +1468,73 @@ class PongMultiplayer {
     }
   }
 
-  // Signaling via session attributes
-  async _sendSignaling(message) {
-    if (!this.currentSessionId) return;
+  // Connection quality monitoring
+  _startLatencyMonitor() {
+    this._stopLatencyMonitor();
+    this.latencyMonitorInterval = setInterval(() => {
+      this._updateConnectionInfo();
+    }, 1000);
+  }
 
-    const signalingKey = `signaling_${pongAPI.userId}`;
-
-    try {
-      await fetch(
-        `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${this.currentSessionId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${pongAPI.accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            attributes: {
-              [signalingKey]: JSON.stringify(message)
-            }
-          })
-        }
-      );
-    } catch (error) {
-      console.error('[Multiplayer] Failed to send signaling:', error);
+  _stopLatencyMonitor() {
+    if (this.latencyMonitorInterval) {
+      clearInterval(this.latencyMonitorInterval);
+      this.latencyMonitorInterval = null;
     }
   }
 
-  async _processSignalingFromAttributes(attributes) {
-    if (!attributes || !this.opponentInfo) return;
-
-    const signalingKey = `signaling_${this.opponentInfo.id}`;
-    const signalingData = attributes[signalingKey];
-
-    if (!signalingData) return;
+  async _updateConnectionInfo() {
+    if (!this.peerConnection) return;
 
     try {
-      const message = JSON.parse(signalingData);
-      console.log('[Multiplayer] Received signaling:', message.type);
+      const stats = await this.peerConnection.getStats();
+      let latency = 0;
+      let connectionType = 'unknown';
 
-      switch (message.type) {
-        case 'offer':
-          await this._handleOffer(message);
-          break;
-        case 'answer':
-          await this._handleAnswer(message);
-          break;
-        case 'ice-candidate':
-          await this._handleIceCandidate(message.candidate);
-          break;
+      stats.forEach(report => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          latency = report.currentRoundTripTime
+            ? Math.round(report.currentRoundTripTime * 1000)
+            : 0;
+        }
+
+        if (report.type === 'local-candidate' && report.isRemote === false) {
+          connectionType = report.candidateType || connectionType;
+        }
+      });
+
+      this.connectionInfo = { type: connectionType, latency };
+
+      if (this.onConnectionInfoUpdate) {
+        this.onConnectionInfoUpdate(this.connectionInfo);
       }
     } catch (error) {
-      console.error('[Multiplayer] Failed to process signaling:', error);
+      // Ignore stats errors
     }
   }
 
-  // Polling for signaling (fallback if WebSocket notifications don't work)
-  async pollSignaling() {
-    if (!this.currentSessionId || !this.opponentInfo) return;
-
+  async _detectConnectionType() {
     try {
-      const response = await fetch(
-        `${CONFIG.AGS_BASE_URL}/session/v1/public/namespaces/${CONFIG.NAMESPACE}/gamesessions/${this.currentSessionId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${pongAPI.accessToken}`
-          }
+      const stats = await this.peerConnection.getStats();
+      stats.forEach(report => {
+        if (report.type === 'local-candidate') {
+          this.connectionInfo.type = report.candidateType || 'unknown';
         }
-      );
-
-      if (response.ok) {
-        const session = await response.json();
-        this._processSignalingFromAttributes(session.attributes);
-      }
+      });
     } catch (error) {
-      console.error('[Multiplayer] Failed to poll signaling:', error);
+      // Ignore
     }
+  }
+
+  // Get connection info
+  getConnectionInfo() {
+    return this.connectionInfo;
   }
 
   _cleanupP2P() {
+    this._clearSignalingTimeout();
+    this._stopLatencyMonitor();
+
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
@@ -1264,6 +1544,10 @@ class PongMultiplayer {
       this.peerConnection.close();
       this.peerConnection = null;
     }
+
+    this.pendingCandidates = [];
+    this.isRemoteDescriptionSet = false;
+    this._setP2PState(P2PState.IDLE);
   }
 
   _handleLobbyDisconnect(data) {
