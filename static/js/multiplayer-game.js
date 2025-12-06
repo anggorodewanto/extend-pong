@@ -457,9 +457,12 @@ class MultiplayerGame {
 
       // Add to lag compensation history (host only - for rewinding guest paddle)
       if (this.isHost && this.lagCompensationEnabled) {
+        // Estimate when the paddle was actually at this position:
+        // The remote player was at position Y when they sent the update,
+        // which was approximately (now - one-way latency) ago
+        const estimatedPositionTime = now - this.connectionInfo.latency;
         this.remotePaddleHistory.push({
-          timestamp: now,
-          sentTimestamp: state.timestamp,
+          timestamp: estimatedPositionTime,
           y: state.paddle.y
         });
 
@@ -761,12 +764,13 @@ class MultiplayerGame {
     const paddleLeft = paddle.x;
     const paddleRight = paddle.x + paddle.width;
 
-    // For lag compensation, use the historical paddle position
-    // based on the current latency measurement
+    // For lag compensation, find where the paddle was when the ball
+    // would have reached it from the remote player's perspective.
+    // This accounts for network delay so hits feel fair to both players.
     let effectivePaddleY = paddle.y;
     if (useLagCompensation && this.lagCompensationEnabled && this.connectionInfo.latency > 0) {
-      // Rewind paddle position by the one-way latency
-      // (latency is already half of RTT from ping/pong measurement)
+      // Look up paddle position from (latency) ms ago, which represents
+      // where the paddle was when the remote player saw the ball approaching
       effectivePaddleY = this._getHistoricalPaddleY(this.connectionInfo.latency);
     }
 
@@ -1034,7 +1038,9 @@ class MultiplayerGame {
     return a + (b - a) * t;
   }
 
-  // Lag compensation: get paddle position at a specific time in the past
+  // Lag compensation: get paddle position at a specific time in the past.
+  // The history stores estimated times when the paddle was at each position,
+  // accounting for network latency when the update was received.
   _getHistoricalPaddleY(msAgo) {
     if (!this.lagCompensationEnabled || this.remotePaddleHistory.length === 0) {
       return this.remotePaddle.y;

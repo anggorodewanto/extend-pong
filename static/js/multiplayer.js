@@ -1493,8 +1493,9 @@ class PongMultiplayer {
 
       stats.forEach(report => {
         if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+          // currentRoundTripTime is RTT in seconds, convert to one-way latency in ms
           latency = report.currentRoundTripTime
-            ? Math.round(report.currentRoundTripTime * 1000)
+            ? Math.round((report.currentRoundTripTime * 1000) / 2)
             : 0;
         }
 
