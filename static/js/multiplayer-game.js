@@ -81,6 +81,9 @@ class MultiplayerGame {
     this.onGameOver = null;
     this.onConnectionInfoUpdate = null;
 
+    // Game end reason (null, 'opponent_left', 'score')
+    this.gameEndReason = null;
+
     // Bind event handlers
     this._bindEvents();
   }
@@ -316,6 +319,7 @@ class MultiplayerGame {
     this.localScore = 0;
     this.remoteScore = 0;
     this.gameStartTime = null;
+    this.gameEndReason = null;
     this.sequence = 0;
     this.remoteStates = [];
     this.lastRemoteState = null;
@@ -582,6 +586,7 @@ class MultiplayerGame {
 
   _handlePlayerLeft(state) {
     this.state = 'finished';
+    this.gameEndReason = 'opponent_left';
     this._stopNetworkUpdates();
 
     if (this.onGameOver) {
@@ -1020,17 +1025,25 @@ class MultiplayerGame {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
 
-    const won = this.localScore > this.remoteScore;
+    const won = this.localScore > this.remoteScore || this.gameEndReason === 'opponent_left';
 
     ctx.fillStyle = won ? '#00ff88' : '#ff4444';
     ctx.font = 'bold 40px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(won ? 'YOU WIN!' : 'GAME OVER', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 - 30);
+    ctx.fillText(won ? 'YOU WIN!' : 'GAME OVER', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 - 40);
+
+    // Show reason subtitle
+    if (this.gameEndReason === 'opponent_left') {
+      ctx.fillStyle = '#ffaa00';
+      ctx.font = '20px sans-serif';
+      ctx.fillText('Opponent left the match', CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2);
+    }
 
     ctx.fillStyle = CONFIG.COLORS.TEXT;
     ctx.font = '24px sans-serif';
-    ctx.fillText(`${this.localScore} - ${this.remoteScore}`, CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2 + 20);
+    const scoreY = this.gameEndReason === 'opponent_left' ? CONFIG.CANVAS_HEIGHT / 2 + 35 : CONFIG.CANVAS_HEIGHT / 2 + 10;
+    ctx.fillText(`${this.localScore} - ${this.remoteScore}`, CONFIG.CANVAS_WIDTH / 2, scoreY);
   }
 
   // Utility

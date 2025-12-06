@@ -185,6 +185,7 @@
           <li><span class="key">Space</span> Start game</li>
           <li><span class="key">Esc</span> Pause (single-player only)</li>
         </ul>
+        <p class="multiplayer-info">Multiplayer: First to <span id="winningScore"></span> wins!</p>
       </div>
     </aside>
   </main>
@@ -1134,6 +1135,9 @@
 
       // Initialize
       function init() {
+        // Update winning score from config
+        document.getElementById('winningScore').textContent = CONFIG.WINNING_SCORE;
+
         updateUserUI();
         updateButtons();
 

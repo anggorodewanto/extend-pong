@@ -551,6 +551,14 @@ body {
   text-align: center;
 }
 
+.multiplayer-info {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  color: var(--accent-color);
+  font-size: 0.8rem;
+}
+
 /* Responsive design */
 @media (max-width: 780px) {
   .game-container {
