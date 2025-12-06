@@ -68,6 +68,10 @@ const CONFIG = {
     SEND_RATE: 30,              // Network update rate (Hz)
     INTERPOLATION_DELAY_MS: 50, // Buffer for smooth interpolation
 
+    // Lag compensation
+    LAG_COMPENSATION_ENABLED: true,   // Rewind remote paddle for fair collision detection
+    MAX_LAG_COMPENSATION_MS: 200,     // Maximum rewind time (prevents extreme exploitation)
+
     // WebRTC DataChannel
     DATA_CHANNEL_NAME: 'pong-game',
     ORDERED: false,             // Unordered for lowest latency

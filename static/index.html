@@ -174,8 +174,8 @@
         <h3>How to Play</h3>
         <ul>
           <li><span class="key">W / S</span> Move paddle</li>
-          <li><span class="key">Space</span> Start / Pause</li>
-          <li><span class="key">Esc</span> Pause game</li>
+          <li><span class="key">Space</span> Start game</li>
+          <li><span class="key">Esc</span> Pause (single-player only)</li>
         </ul>
       </div>
     </aside>
@@ -564,12 +564,15 @@
         elements.singlePlayerControls.style.display = mode === 'single' ? 'flex' : 'none';
         elements.multiplayerControls.style.display = mode === 'multi' ? 'flex' : 'none';
 
-        // Reset game when switching modes
-        game.reset();
-
-        // Reset multiplayer UI
+        // Handle AI game state based on mode
         if (mode === 'multi') {
+          // Stop AI game loop when entering multiplayer
+          game.stop();
           showMatchmakingPanel();
+        } else {
+          // Reset and reactivate AI game when entering single-player
+          game.reset();
+          game.activate();
         }
 
         console.log(`[App] Switched to ${mode} mode`);
@@ -1069,9 +1072,9 @@
         setTimeout(updateButtons, 10);
       });
 
-      // Canvas click to start
+      // Canvas click to start (single-player only)
       document.getElementById('gameCanvas').addEventListener('click', () => {
-        if (game.getState() === 'waiting') {
+        if (currentMode === 'single' && game.getState() === 'waiting') {
           game.start();
           updateButtons();
         }

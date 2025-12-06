@@ -61,6 +61,11 @@ class MultiplayerGame {
     this.remoteStates = [];
     this.lastRemoteState = null;
 
+    // Lag compensation: paddle position history for collision rewind
+    this.remotePaddleHistory = [];
+    this.lagCompensationEnabled = CONFIG.MULTIPLAYER.LAG_COMPENSATION_ENABLED !== false;
+    this.maxLagCompensationMs = CONFIG.MULTIPLAYER.MAX_LAG_COMPENSATION_MS || 200;
+
     // Connection info
     this.connectionInfo = {
       type: 'unknown',
@@ -156,12 +161,7 @@ class MultiplayerGame {
         this.keys.down = true;
         e.preventDefault();
         break;
-      case 'Escape':
-        if (this.state === 'playing') {
-          this.pause();
-        }
-        e.preventDefault();
-        break;
+      // Note: Pause is disabled in multiplayer mode
     }
   }
 
@@ -319,6 +319,7 @@ class MultiplayerGame {
     this.sequence = 0;
     this.remoteStates = [];
     this.lastRemoteState = null;
+    this.remotePaddleHistory = []; // Clear lag compensation history
 
     // Reset countdown state
     this.countdownValue = 0;
@@ -441,6 +442,8 @@ class MultiplayerGame {
   _handleGameState(state) {
     // Update remote paddle position
     if (state.paddle) {
+      const now = Date.now();
+
       // Add to interpolation buffer
       this.remoteStates.push({
         timestamp: state.timestamp,
@@ -450,6 +453,22 @@ class MultiplayerGame {
       // Keep buffer size manageable
       while (this.remoteStates.length > 20) {
         this.remoteStates.shift();
+      }
+
+      // Add to lag compensation history (host only - for rewinding guest paddle)
+      if (this.isHost && this.lagCompensationEnabled) {
+        this.remotePaddleHistory.push({
+          timestamp: now,
+          sentTimestamp: state.timestamp,
+          y: state.paddle.y
+        });
+
+        // Keep history within max lag compensation window + buffer
+        const cutoff = now - this.maxLagCompensationMs - 500;
+        while (this.remotePaddleHistory.length > 0 &&
+               this.remotePaddleHistory[0].timestamp < cutoff) {
+          this.remotePaddleHistory.shift();
+        }
       }
     }
 
@@ -716,8 +735,8 @@ class MultiplayerGame {
 
     // Paddle collision
     // Host's local paddle is on left, remote on right
-    this._checkPaddleCollision(this.localPaddle, -1);
-    this._checkPaddleCollision(this.remotePaddle, 1);
+    this._checkPaddleCollision(this.localPaddle, -1, false);
+    this._checkPaddleCollision(this.remotePaddle, 1, true); // Use lag compensation for remote paddle
   }
 
   _predictBall(timeScale) {
@@ -733,7 +752,7 @@ class MultiplayerGame {
     }
   }
 
-  _checkPaddleCollision(paddle, direction) {
+  _checkPaddleCollision(paddle, direction, useLagCompensation = false) {
     const ballLeft = this.ball.x - this.ball.size / 2;
     const ballRight = this.ball.x + this.ball.size / 2;
     const ballTop = this.ball.y - this.ball.size / 2;
@@ -741,13 +760,23 @@ class MultiplayerGame {
 
     const paddleLeft = paddle.x;
     const paddleRight = paddle.x + paddle.width;
-    const paddleTop = paddle.y;
-    const paddleBottom = paddle.y + paddle.height;
+
+    // For lag compensation, use the historical paddle position
+    // based on the current latency measurement
+    let effectivePaddleY = paddle.y;
+    if (useLagCompensation && this.lagCompensationEnabled && this.connectionInfo.latency > 0) {
+      // Rewind paddle position by the one-way latency
+      // (latency is already half of RTT from ping/pong measurement)
+      effectivePaddleY = this._getHistoricalPaddleY(this.connectionInfo.latency);
+    }
+
+    const paddleTop = effectivePaddleY;
+    const paddleBottom = effectivePaddleY + paddle.height;
 
     if (ballRight >= paddleLeft && ballLeft <= paddleRight &&
         ballBottom >= paddleTop && ballTop <= paddleBottom) {
 
-      const hitPos = ((this.ball.y - paddle.y) / paddle.height) * 2 - 1;
+      const hitPos = ((this.ball.y - effectivePaddleY) / paddle.height) * 2 - 1;
       this.ball.speed = Math.min(this.ball.speed + CONFIG.BALL_SPEED_INCREMENT, CONFIG.BALL_MAX_SPEED);
 
       const maxAngle = 60 * Math.PI / 180;
@@ -1003,6 +1032,48 @@ class MultiplayerGame {
   // Utility
   _lerp(a, b, t) {
     return a + (b - a) * t;
+  }
+
+  // Lag compensation: get paddle position at a specific time in the past
+  _getHistoricalPaddleY(msAgo) {
+    if (!this.lagCompensationEnabled || this.remotePaddleHistory.length === 0) {
+      return this.remotePaddle.y;
+    }
+
+    // Clamp rewind time to max allowed
+    const rewindMs = Math.min(msAgo, this.maxLagCompensationMs);
+    const targetTime = Date.now() - rewindMs;
+
+    // Find the paddle position at targetTime using interpolation
+    let before = null;
+    let after = null;
+
+    for (let i = 0; i < this.remotePaddleHistory.length; i++) {
+      const entry = this.remotePaddleHistory[i];
+      if (entry.timestamp <= targetTime) {
+        before = entry;
+      } else {
+        after = entry;
+        break;
+      }
+    }
+
+    // Return interpolated position or best available
+    if (before && after) {
+      const t = (targetTime - before.timestamp) / (after.timestamp - before.timestamp);
+      return this._lerp(before.y, after.y, Math.max(0, Math.min(1, t)));
+    }
+
+    if (before) {
+      return before.y;
+    }
+
+    if (after) {
+      return after.y;
+    }
+
+    // Fallback to current position
+    return this.remotePaddle.y;
   }
 
   // Getters

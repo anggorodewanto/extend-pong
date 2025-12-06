@@ -36,6 +36,9 @@ class PongGame {
     this.lastFrameTime = 0;
     this.animationId = null;
 
+    // Disable flag for when multiplayer is active
+    this.disabled = false;
+
     // Event callbacks
     this.onScoreUpdate = null;
     this.onPlayerScore = null;
@@ -97,6 +100,9 @@ class PongGame {
   }
 
   _handleKeyDown(e) {
+    // Ignore input when disabled (multiplayer mode active)
+    if (this.disabled) return;
+
     switch (e.key) {
       case 'ArrowUp':
       case 'w':
@@ -145,6 +151,9 @@ class PongGame {
   }
 
   _handleTouch(e) {
+    // Ignore input when disabled (multiplayer mode active)
+    if (this.disabled) return;
+
     e.preventDefault();
     const touch = e.touches[0];
     const rect = this.canvas.getBoundingClientRect();
@@ -199,6 +208,25 @@ class PongGame {
 
     if (this.onScoreUpdate) {
       this.onScoreUpdate(this.playerScore, this.aiScore);
+    }
+  }
+
+  // Stop the game loop completely (used when switching to multiplayer)
+  stop() {
+    this.state = 'waiting';
+    this.disabled = true;
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  // Restart the game loop (used when switching back to single-player)
+  activate() {
+    this.disabled = false;
+    if (!this.animationId) {
+      this.lastFrameTime = performance.now();
+      this._gameLoop();
     }
   }
 
