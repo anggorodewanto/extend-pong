@@ -6,6 +6,7 @@ package ags
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/AccelByte/accelbyte-go-sdk/leaderboard-sdk/pkg/leaderboardclient/leaderboard_data_v3"
@@ -52,6 +53,20 @@ func (s *AGSLeaderboardService) GetAllTimeLeaderboard(
 
 	resp, err := s.leaderboardDataV3Service.GetAllTimeLeaderboardRankingPublicV3Short(params)
 	if err != nil {
+		// Check if this is a "not found" error (leaderboard doesn't exist or has no rankings)
+		// AGS returns 404 for both cases - return empty result instead of error
+		var notFoundErr *leaderboard_data_v3.GetAllTimeLeaderboardRankingPublicV3NotFound
+		if errors.As(err, &notFoundErr) {
+			s.logger.WithFields(logrus.Fields{
+				"namespace":       namespace,
+				"leaderboardCode": leaderboardCode,
+			}).Debug("AGS Leaderboard: leaderboard not found or empty, returning empty result")
+			return &LeaderboardResult{
+				Entries:    make([]LeaderboardEntry, 0),
+				TotalCount: 0,
+			}, nil
+		}
+
 		s.logger.WithFields(logrus.Fields{
 			"namespace":       namespace,
 			"leaderboardCode": leaderboardCode,

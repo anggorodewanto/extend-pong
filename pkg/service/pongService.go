@@ -19,6 +19,14 @@ const (
 	PongHighScoreStatCode = "pong-high-score"
 	// PongLeaderboardCode is the leaderboard code for pong rankings
 	PongLeaderboardCode = "pong-leaderboard"
+
+	// Multiplayer stat codes
+	PongMPWinsStatCode    = "pong-mp-wins"
+	PongMPLossesStatCode  = "pong-mp-losses"
+	PongMPMatchesStatCode = "pong-mp-matches"
+
+	// PongMPWinsLeaderboardCode is the leaderboard code for multiplayer wins
+	PongMPWinsLeaderboardCode = "pong-mp-wins-leaderboard"
 )
 
 type PongServiceServerImpl struct {
@@ -84,10 +92,16 @@ func (s *PongServiceServerImpl) GetLeaderboard(
 		offset = 0
 	}
 
+	// Use requested leaderboard code or default to single-player leaderboard
+	leaderboardCode := req.LeaderboardCode
+	if leaderboardCode == "" {
+		leaderboardCode = PongLeaderboardCode
+	}
+
 	result, err := s.leaderboardService.GetAllTimeLeaderboard(
 		ctx,
 		s.namespace,
-		PongLeaderboardCode,
+		leaderboardCode,
 		int64(limit),
 		int64(offset),
 	)
@@ -108,5 +122,34 @@ func (s *PongServiceServerImpl) GetLeaderboard(
 	return &pb.GetLeaderboardResponse{
 		Entries:    entries,
 		TotalCount: result.TotalCount,
+	}, nil
+}
+
+func (s *PongServiceServerImpl) SubmitMultiplayerResult(
+	ctx context.Context, req *pb.SubmitMultiplayerResultRequest,
+) (*pb.SubmitMultiplayerResultResponse, error) {
+	if req.UserId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "user_id is required")
+	}
+
+	// Build stat updates based on match result
+	updates := []ags.StatUpdate{
+		{StatCode: PongMPMatchesStatCode, Value: 1},
+	}
+
+	if req.Won {
+		updates = append(updates, ags.StatUpdate{StatCode: PongMPWinsStatCode, Value: 1})
+	} else {
+		updates = append(updates, ags.StatUpdate{StatCode: PongMPLossesStatCode, Value: 1})
+	}
+
+	err := s.statisticsService.BulkUpdateUserStats(ctx, s.namespace, req.UserId, updates)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to submit multiplayer result: %v", err)
+	}
+
+	return &pb.SubmitMultiplayerResultResponse{
+		Success: true,
+		Message: "Multiplayer result submitted successfully",
 	}, nil
 }

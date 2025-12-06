@@ -158,6 +158,14 @@
       <!-- Leaderboard -->
       <div class="card">
         <h2>Leaderboard</h2>
+        <div class="leaderboard-tabs">
+          <button class="leaderboard-tab active" id="singlePlayerTabBtn" data-tab="single">
+            Single Player
+          </button>
+          <button class="leaderboard-tab" id="multiplayerTabBtn" data-tab="multi">
+            Multiplayer
+          </button>
+        </div>
         <div id="leaderboardContainer">
           <div class="leaderboard-loading">
             <div class="spinner"></div>
@@ -212,6 +220,8 @@
         copyUserIdBtn: document.getElementById('copyUserIdBtn'),
         leaderboardContainer: document.getElementById('leaderboardContainer'),
         refreshLeaderboardBtn: document.getElementById('refreshLeaderboardBtn'),
+        singlePlayerTabBtn: document.getElementById('singlePlayerTabBtn'),
+        multiplayerTabBtn: document.getElementById('multiplayerTabBtn'),
         toastContainer: document.getElementById('toastContainer'),
         lobbyStatusContainer: document.getElementById('lobbyStatusContainer'),
         lobbyStatusIndicator: document.getElementById('lobbyStatusIndicator'),
@@ -265,6 +275,9 @@
       let currentMode = 'single'; // 'single' or 'multi'
       let queueTimerInterval = null;
       let queueStartTime = null;
+
+      // Leaderboard tab state
+      let currentLeaderboardTab = 'single'; // 'single' or 'multi'
 
       // P2P state messages
       const P2P_STATE_MESSAGES = {
@@ -438,7 +451,7 @@
           console.log(`[App] Multiplayer score: ${local} - ${remote}`);
         };
 
-        multiplayerGame.onGameOver = (result) => {
+        multiplayerGame.onGameOver = async (result) => {
           console.log('[App] Game over:', result);
           hideConnectionQuality();
 
@@ -448,6 +461,22 @@
             showToast('Opponent left - you win by forfeit!', 'success');
           } else {
             showToast('Game over - you lost', 'info');
+          }
+
+          // Submit match result to stats
+          try {
+            const opponentId = pongMultiplayer.opponentInfo?.id || pongMultiplayer.opponentInfo?.ID || '';
+            const won = result.won || result.reason === 'opponent_left';
+            await pongAPI.submitMultiplayerResult(
+              won,
+              opponentId,
+              result.localScore || 0,
+              result.remoteScore || 0,
+              0 // Match duration not tracked yet
+            );
+            console.log('[App] Multiplayer result submitted');
+          } catch (error) {
+            console.error('[App] Failed to submit multiplayer result:', error);
           }
         };
 
@@ -854,17 +883,21 @@
       }
 
       // Render leaderboard
-      function renderLeaderboard(data) {
+      function renderLeaderboard(data, isMultiplayer = false) {
         if (!data || !data.entries || data.entries.length === 0) {
+          const emptyMessage = isMultiplayer
+            ? 'No multiplayer wins yet. Play a match!'
+            : 'No scores yet. Be the first!';
           elements.leaderboardContainer.innerHTML = `
             <div class="leaderboard-empty">
-              <p>No scores yet. Be the first!</p>
+              <p>${emptyMessage}</p>
             </div>
           `;
           return;
         }
 
         const userInfo = pongAPI.getUserInfo();
+        const scoreLabel = isMultiplayer ? 'Wins' : 'Score';
         const html = `
           <ul class="leaderboard-list">
             ${data.entries.map((entry, index) => {
@@ -876,7 +909,7 @@
                   <div class="player-info">
                     <div class="player-name">${entry.displayName || `Player_${entry.userId?.substring(0, 6) || 'Unknown'}`}</div>
                   </div>
-                  <span class="player-score">${entry.score}</span>
+                  <span class="player-score" title="${scoreLabel}">${entry.score}</span>
                 </li>
               `;
             }).join('')}
@@ -886,7 +919,7 @@
       }
 
       // Fetch and display leaderboard
-      async function loadLeaderboard() {
+      async function loadLeaderboard(tab = currentLeaderboardTab) {
         elements.leaderboardContainer.innerHTML = `
           <div class="leaderboard-loading">
             <div class="spinner"></div>
@@ -895,8 +928,11 @@
         `;
 
         try {
-          const data = await pongAPI.getLeaderboard();
-          renderLeaderboard(data);
+          const isMultiplayer = tab === 'multi';
+          const data = isMultiplayer
+            ? await pongAPI.getMultiplayerLeaderboard()
+            : await pongAPI.getLeaderboard();
+          renderLeaderboard(data, isMultiplayer);
         } catch (error) {
           console.error('Failed to load leaderboard:', error);
           elements.leaderboardContainer.innerHTML = `
@@ -905,6 +941,19 @@
             </div>
           `;
         }
+      }
+
+      // Switch leaderboard tab
+      function switchLeaderboardTab(tab) {
+        if (currentLeaderboardTab === tab) return;
+        currentLeaderboardTab = tab;
+
+        // Update tab button states
+        elements.singlePlayerTabBtn.classList.toggle('active', tab === 'single');
+        elements.multiplayerTabBtn.classList.toggle('active', tab === 'multi');
+
+        // Load the appropriate leaderboard
+        loadLeaderboard(tab);
       }
 
       // Handle login
@@ -1032,10 +1081,13 @@
       });
 
       elements.refreshLeaderboardBtn.addEventListener('click', () => {
-        pongAPI.leaderboardCache = null;
-        pongAPI.leaderboardCacheTime = null;
+        pongAPI.clearLeaderboardCache();
         loadLeaderboard();
       });
+
+      // Leaderboard tab event listeners
+      elements.singlePlayerTabBtn.addEventListener('click', () => switchLeaderboardTab('single'));
+      elements.multiplayerTabBtn.addEventListener('click', () => switchLeaderboardTab('multi'));
 
       // Mode selection event listeners
       elements.singlePlayerBtn.addEventListener('click', () => switchMode('single'));

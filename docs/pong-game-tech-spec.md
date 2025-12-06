@@ -1526,6 +1526,8 @@ Track multiplayer-specific stats in AGS:
    - Implement ball state synchronization
    - Add interpolation for smooth remote paddle movement
    - Handle score updates and game end
+   - Add lag compensation for paddle collision detection
+   - Implement countdown synchronization between host and guest
 
 7. **Error Handling & Polish**
    - Implement reconnection logic

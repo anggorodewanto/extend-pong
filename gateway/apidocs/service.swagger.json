@@ -51,10 +51,56 @@
             "required": false,
             "type": "integer",
             "format": "int32"
+          },
+          {
+            "name": "leaderboardCode",
+            "description": "Optional: leaderboard code (default: pong-leaderboard)",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
           "PongService"
+        ]
+      }
+    },
+    "/v1/public/multiplayer/results": {
+      "post": {
+        "summary": "Submit multiplayer result",
+        "description": "Submit multiplayer match result to update win/loss statistics",
+        "operationId": "PongService_SubmitMultiplayerResult",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/serviceSubmitMultiplayerResultResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/serviceSubmitMultiplayerResultRequest"
+            }
+          }
+        ],
+        "tags": [
+          "PongService"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
         ]
       }
     },
@@ -163,6 +209,48 @@
         "timestamp": {
           "type": "string",
           "format": "int64"
+        }
+      }
+    },
+    "serviceSubmitMultiplayerResultRequest": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "won": {
+          "type": "boolean"
+        },
+        "opponentId": {
+          "type": "string",
+          "title": "Optional: opponent's user ID"
+        },
+        "localScore": {
+          "type": "integer",
+          "format": "int32",
+          "title": "Player's final score"
+        },
+        "opponentScore": {
+          "type": "integer",
+          "format": "int32",
+          "title": "Opponent's final score"
+        },
+        "matchDurationSeconds": {
+          "type": "integer",
+          "format": "int32",
+          "title": "Optional: match duration in seconds"
+        }
+      },
+      "title": "Request/Response messages for SubmitMultiplayerResult"
+    },
+    "serviceSubmitMultiplayerResultResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
         }
       }
     },

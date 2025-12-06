@@ -168,20 +168,31 @@ class PongAPI {
   }
 
   // Get Leaderboard from Backend (Public - no auth required)
-  async getLeaderboard(limit = CONFIG.LEADERBOARD_LIMIT, offset = 0) {
+  async getLeaderboard(limit = CONFIG.LEADERBOARD_LIMIT, offset = 0, leaderboardCode = '') {
+    // Use different cache keys for different leaderboards
+    const cacheKey = leaderboardCode || 'default';
+
     // Check cache
     const now = Date.now();
-    if (this.leaderboardCache &&
-        this.leaderboardCacheTime &&
-        (now - this.leaderboardCacheTime) < CONFIG.LEADERBOARD_CACHE_TTL) {
-      console.log('Returning cached leaderboard');
-      return this.leaderboardCache;
+    if (!this._leaderboardCaches) {
+      this._leaderboardCaches = {};
+    }
+
+    const cachedData = this._leaderboardCaches[cacheKey];
+    if (cachedData &&
+        cachedData.time &&
+        (now - cachedData.time) < CONFIG.LEADERBOARD_CACHE_TTL) {
+      console.log(`Returning cached leaderboard for ${cacheKey}`);
+      return cachedData.data;
     }
 
     try {
       const url = new URL(`${CONFIG.BACKEND_URL}/v1/public/leaderboard`);
       url.searchParams.set('limit', limit.toString());
       url.searchParams.set('offset', offset.toString());
+      if (leaderboardCode) {
+        url.searchParams.set('leaderboard_code', leaderboardCode);
+      }
 
       const response = await fetch(url.toString(), {
         method: 'GET',
@@ -196,24 +207,42 @@ class PongAPI {
       }
 
       const data = await response.json();
-      console.log('Leaderboard fetched:', data);
+      console.log(`Leaderboard fetched (${cacheKey}):`, data);
 
       // Update cache
-      this.leaderboardCache = data;
-      this.leaderboardCacheTime = now;
+      this._leaderboardCaches[cacheKey] = { data, time: now };
+
+      // Also update legacy cache for backwards compatibility
+      if (!leaderboardCode) {
+        this.leaderboardCache = data;
+        this.leaderboardCacheTime = now;
+      }
 
       return data;
     } catch (error) {
       console.error('Get leaderboard error:', error);
 
       // Return cached data if available on error
-      if (this.leaderboardCache) {
-        console.log('Returning stale cached leaderboard due to error');
-        return this.leaderboardCache;
+      const cached = this._leaderboardCaches[cacheKey];
+      if (cached) {
+        console.log(`Returning stale cached leaderboard for ${cacheKey} due to error`);
+        return cached.data;
       }
 
       throw error;
     }
+  }
+
+  // Get Multiplayer Wins Leaderboard
+  async getMultiplayerLeaderboard(limit = CONFIG.LEADERBOARD_LIMIT, offset = 0) {
+    return this.getLeaderboard(limit, offset, 'pong-mp-wins-leaderboard');
+  }
+
+  // Clear all leaderboard caches
+  clearLeaderboardCache() {
+    this.leaderboardCache = null;
+    this.leaderboardCacheTime = null;
+    this._leaderboardCaches = {};
   }
 
   // Get current user info
@@ -223,6 +252,49 @@ class PongAPI {
       displayName: this.displayName,
       isLoggedIn: this.isLoggedIn()
     };
+  }
+
+  // Submit multiplayer match result to backend
+  async submitMultiplayerResult(won, opponentId = '', localScore = 0, opponentScore = 0, matchDurationSeconds = 0) {
+    if (!this.isLoggedIn()) {
+      throw new Error('Must be logged in to submit multiplayer result');
+    }
+
+    try {
+      const response = await fetch(`${CONFIG.BACKEND_URL}/v1/public/multiplayer/results`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: this.userId,
+          won: won,
+          opponent_id: opponentId,
+          local_score: localScore,
+          opponent_score: opponentScore,
+          match_duration_seconds: matchDurationSeconds
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+
+        if (response.status === 401) {
+          this._clearSession();
+          throw new Error('Session expired, please refresh');
+        }
+
+        throw new Error(errorData.message || `Submit failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Multiplayer result submitted:', data);
+      return data;
+    } catch (error) {
+      console.error('Submit multiplayer result error:', error);
+      throw error;
+    }
   }
 }
 

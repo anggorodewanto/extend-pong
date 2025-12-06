@@ -52,6 +52,20 @@ func (m *MockStatisticsService) UpdateUserStatItem(
 	return nil
 }
 
+// BulkUpdateUserStats updates multiple stats for a user
+func (m *MockStatisticsService) BulkUpdateUserStats(
+	ctx context.Context,
+	namespace, userID string,
+	updates []StatUpdate,
+) error {
+	for _, update := range updates {
+		if err := m.UpdateUserStatItem(ctx, namespace, userID, update.StatCode, update.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // GetUserScore returns the stored score for a user (helper for testing)
 func (m *MockStatisticsService) GetUserScore(namespace, statCode, userID string) float64 {
 	m.mu.RLock()
@@ -186,13 +200,29 @@ func (l *LinkedMockServices) UpdateUserStatItem(
 		return err
 	}
 
-	// Sync to leaderboard
-	currentScore := l.Statistics.GetUserScore(namespace, statCode, userID)
-	l.Leaderboard.AddEntry(namespace, l.lbCode, LeaderboardEntry{
-		UserID: userID,
-		Score:  currentScore,
-	})
+	// Sync to leaderboard if it's the tracked stat
+	if statCode == l.statCode {
+		currentScore := l.Statistics.GetUserScore(namespace, statCode, userID)
+		l.Leaderboard.AddEntry(namespace, l.lbCode, LeaderboardEntry{
+			UserID: userID,
+			Score:  currentScore,
+		})
+	}
 
+	return nil
+}
+
+// BulkUpdateUserStats updates multiple stats for a user
+func (l *LinkedMockServices) BulkUpdateUserStats(
+	ctx context.Context,
+	namespace, userID string,
+	updates []StatUpdate,
+) error {
+	for _, update := range updates {
+		if err := l.UpdateUserStatItem(ctx, namespace, userID, update.StatCode, update.Value); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

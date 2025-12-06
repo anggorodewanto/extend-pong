@@ -43,6 +43,21 @@ func (m *mockStatisticsService) UpdateUserStatItem(
 	return m.updateErr
 }
 
+func (m *mockStatisticsService) BulkUpdateUserStats(
+	ctx context.Context,
+	namespace, userID string,
+	updates []ags.StatUpdate,
+) error {
+	m.called = true
+	m.lastCall.namespace = namespace
+	m.lastCall.userID = userID
+	if len(updates) > 0 {
+		m.lastCall.statCode = updates[0].StatCode
+		m.lastCall.value = updates[0].Value
+	}
+	return m.updateErr
+}
+
 // mockLeaderboardService is a configurable mock for testing
 type mockLeaderboardService struct {
 	result   *ags.LeaderboardResult
@@ -379,8 +394,136 @@ func TestGetLeaderboard_WithPagination(t *testing.T) {
 	assert.Equal(t, int64(10), lbService.lastCall.offset)
 }
 
+func TestGetLeaderboard_CustomLeaderboardCode(t *testing.T) {
+	statsService := &mockStatisticsService{}
+	lbService := &mockLeaderboardService{
+		result: &ags.LeaderboardResult{
+			Entries: []ags.LeaderboardEntry{
+				{Rank: 1, UserID: "user-1", Score: 10},
+				{Rank: 2, UserID: "user-2", Score: 8},
+			},
+			TotalCount: 2,
+		},
+	}
+	server := NewPongServiceServer("test-namespace", statsService, lbService)
+
+	req := &pb.GetLeaderboardRequest{
+		Limit:           10,
+		Offset:          0,
+		LeaderboardCode: PongMPWinsLeaderboardCode,
+	}
+
+	resp, err := server.GetLeaderboard(context.Background(), req)
+
+	require.NoError(t, err)
+	assert.Len(t, resp.Entries, 2)
+	assert.Equal(t, PongMPWinsLeaderboardCode, lbService.lastCall.leaderboardCode)
+}
+
+func TestGetLeaderboard_EmptyLeaderboardCodeUsesDefault(t *testing.T) {
+	statsService := &mockStatisticsService{}
+	lbService := &mockLeaderboardService{
+		result: &ags.LeaderboardResult{
+			Entries:    []ags.LeaderboardEntry{},
+			TotalCount: 0,
+		},
+	}
+	server := NewPongServiceServer("test-namespace", statsService, lbService)
+
+	req := &pb.GetLeaderboardRequest{
+		Limit:           10,
+		Offset:          0,
+		LeaderboardCode: "", // Empty should use default
+	}
+
+	_, err := server.GetLeaderboard(context.Background(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, PongLeaderboardCode, lbService.lastCall.leaderboardCode)
+}
+
 func TestConstants(t *testing.T) {
 	// Verify constants are defined correctly
 	assert.Equal(t, "pong-high-score", PongHighScoreStatCode)
 	assert.Equal(t, "pong-leaderboard", PongLeaderboardCode)
+	assert.Equal(t, "pong-mp-wins", PongMPWinsStatCode)
+	assert.Equal(t, "pong-mp-losses", PongMPLossesStatCode)
+	assert.Equal(t, "pong-mp-matches", PongMPMatchesStatCode)
+	assert.Equal(t, "pong-mp-wins-leaderboard", PongMPWinsLeaderboardCode)
+}
+
+func TestSubmitMultiplayerResult_Win(t *testing.T) {
+	statsService := &mockStatisticsService{}
+	lbService := &mockLeaderboardService{}
+	server := NewPongServiceServer("test-namespace", statsService, lbService)
+
+	req := &pb.SubmitMultiplayerResultRequest{
+		UserId:       "user-123",
+		Won:         true,
+		OpponentId:  "opponent-456",
+		LocalScore:  5,
+		OpponentScore: 3,
+	}
+
+	resp, err := server.SubmitMultiplayerResult(context.Background(), req)
+
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "Multiplayer result submitted successfully", resp.Message)
+	assert.True(t, statsService.called)
+}
+
+func TestSubmitMultiplayerResult_Loss(t *testing.T) {
+	statsService := &mockStatisticsService{}
+	lbService := &mockLeaderboardService{}
+	server := NewPongServiceServer("test-namespace", statsService, lbService)
+
+	req := &pb.SubmitMultiplayerResultRequest{
+		UserId:       "user-123",
+		Won:         false,
+		OpponentId:  "opponent-456",
+		LocalScore:  2,
+		OpponentScore: 5,
+	}
+
+	resp, err := server.SubmitMultiplayerResult(context.Background(), req)
+
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.True(t, statsService.called)
+}
+
+func TestSubmitMultiplayerResult_EmptyUserId(t *testing.T) {
+	statsService := &mockStatisticsService{}
+	lbService := &mockLeaderboardService{}
+	server := NewPongServiceServer("test-namespace", statsService, lbService)
+
+	req := &pb.SubmitMultiplayerResultRequest{
+		UserId: "",
+		Won:   true,
+	}
+
+	_, err := server.SubmitMultiplayerResult(context.Background(), req)
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.False(t, statsService.called)
+}
+
+func TestSubmitMultiplayerResult_ServiceError(t *testing.T) {
+	statsService := &mockStatisticsService{
+		updateErr: errors.New("stats service error"),
+	}
+	lbService := &mockLeaderboardService{}
+	server := NewPongServiceServer("test-namespace", statsService, lbService)
+
+	req := &pb.SubmitMultiplayerResultRequest{
+		UserId: "user-123",
+		Won:   true,
+	}
+
+	_, err := server.SubmitMultiplayerResult(context.Background(), req)
+
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
 }
