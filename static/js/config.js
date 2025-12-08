@@ -70,7 +70,9 @@ const CONFIG = {
 
     // Lag compensation
     LAG_COMPENSATION_ENABLED: true,   // Rewind remote paddle for fair collision detection
-    MAX_LAG_COMPENSATION_MS: 200,     // Maximum rewind time (prevents extreme exploitation)
+    MAX_LAG_COMPENSATION_MS: 200,     // Base maximum rewind time
+    MAX_LAG_COMPENSATION_MS_RELAY: 350, // Extended max for RELAY connections (high latency expected)
+    ADAPTIVE_LAG_COMPENSATION: true,  // Dynamically adjust based on measured latency
 
     // WebRTC DataChannel
     DATA_CHANNEL_NAME: 'pong-game',
