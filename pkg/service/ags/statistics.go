@@ -45,29 +45,46 @@ func (s *AGSStatisticsService) UpdateUserStatItem(
 	namespace, userID, statCode string,
 	value float64,
 ) error {
+	return s.BulkUpdateUserStats(ctx, namespace, userID, []StatUpdate{
+		{StatCode: statCode, Value: value},
+	})
+}
+
+// BulkUpdateUserStats updates multiple stat items for a user in a single call
+func (s *AGSStatisticsService) BulkUpdateUserStats(
+	ctx context.Context,
+	namespace, userID string,
+	updates []StatUpdate,
+) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	body := make([]*socialclientmodels.BulkStatItemInc, 0, len(updates))
+	for _, update := range updates {
+		statCode := update.StatCode
+		body = append(body, &socialclientmodels.BulkStatItemInc{
+			StatCode: &statCode,
+			Inc:      update.Value,
+		})
+	}
+
 	params := user_statistic.NewBulkIncUserStatItemValue1Params()
 	params.Namespace = namespace
 	params.UserID = userID
-	params.Body = []*socialclientmodels.BulkStatItemInc{
-		{
-			StatCode: &statCode,
-			Inc:      value,
-		},
-	}
+	params.Body = body
 
 	resp, err := s.userStatisticService.BulkIncUserStatItemValue1Short(params)
 	if err != nil {
 		s.logger.WithFields(logrus.Fields{
 			"namespace": namespace,
 			"userID":    userID,
-			"statCode":  statCode,
-			"value":     value,
+			"updates":   updates,
 			"error":     err,
-		}).Error("AGS Statistics: failed to update user stat item")
-		return fmt.Errorf("failed to update user stat item: %w", err)
+		}).Error("AGS Statistics: failed to bulk update user stats")
+		return fmt.Errorf("failed to bulk update user stats: %w", err)
 	}
 
-	// resp is []*socialclientmodels.BulkStatOperationResult (slice directly)
 	// Check if any operations failed
 	if resp != nil {
 		for _, result := range resp {
@@ -75,10 +92,9 @@ func (s *AGSStatisticsService) UpdateUserStatItem(
 				s.logger.WithFields(logrus.Fields{
 					"namespace": namespace,
 					"userID":    userID,
-					"statCode":  statCode,
-					"value":     value,
-				}).Error("AGS Statistics: stat update operation returned failure")
-				return fmt.Errorf("stat update failed for stat code %s", statCode)
+					"updates":   updates,
+				}).Error("AGS Statistics: bulk stat update operation returned failure")
+				return fmt.Errorf("stat update failed")
 			}
 		}
 	}

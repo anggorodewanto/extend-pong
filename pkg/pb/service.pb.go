@@ -142,11 +142,12 @@ func (x *SubmitScoreResponse) GetMessage() string {
 
 // Request/Response messages for GetLeaderboard
 type GetLeaderboardRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"` // Default: 10, Max: 100
-	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Limit           int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"` // Default: 10, Max: 100
+	Offset          int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	LeaderboardCode string                 `protobuf:"bytes,3,opt,name=leaderboard_code,json=leaderboardCode,proto3" json:"leaderboard_code,omitempty"` // Optional: leaderboard code (default: pong-leaderboard)
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetLeaderboardRequest) Reset() {
@@ -191,6 +192,13 @@ func (x *GetLeaderboardRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *GetLeaderboardRequest) GetLeaderboardCode() string {
+	if x != nil {
+		return x.LeaderboardCode
+	}
+	return ""
 }
 
 type LeaderboardEntry struct {
@@ -321,6 +329,143 @@ func (x *GetLeaderboardResponse) GetTotalCount() int32 {
 	return 0
 }
 
+// Request/Response messages for SubmitMultiplayerResult
+type SubmitMultiplayerResultRequest struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	UserId               string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Won                  bool                   `protobuf:"varint,2,opt,name=won,proto3" json:"won,omitempty"`
+	OpponentId           string                 `protobuf:"bytes,3,opt,name=opponent_id,json=opponentId,proto3" json:"opponent_id,omitempty"`                                  // Optional: opponent's user ID
+	LocalScore           int32                  `protobuf:"varint,4,opt,name=local_score,json=localScore,proto3" json:"local_score,omitempty"`                                 // Player's final score
+	OpponentScore        int32                  `protobuf:"varint,5,opt,name=opponent_score,json=opponentScore,proto3" json:"opponent_score,omitempty"`                        // Opponent's final score
+	MatchDurationSeconds int32                  `protobuf:"varint,6,opt,name=match_duration_seconds,json=matchDurationSeconds,proto3" json:"match_duration_seconds,omitempty"` // Optional: match duration in seconds
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *SubmitMultiplayerResultRequest) Reset() {
+	*x = SubmitMultiplayerResultRequest{}
+	mi := &file_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitMultiplayerResultRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitMultiplayerResultRequest) ProtoMessage() {}
+
+func (x *SubmitMultiplayerResultRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitMultiplayerResultRequest.ProtoReflect.Descriptor instead.
+func (*SubmitMultiplayerResultRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SubmitMultiplayerResultRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *SubmitMultiplayerResultRequest) GetWon() bool {
+	if x != nil {
+		return x.Won
+	}
+	return false
+}
+
+func (x *SubmitMultiplayerResultRequest) GetOpponentId() string {
+	if x != nil {
+		return x.OpponentId
+	}
+	return ""
+}
+
+func (x *SubmitMultiplayerResultRequest) GetLocalScore() int32 {
+	if x != nil {
+		return x.LocalScore
+	}
+	return 0
+}
+
+func (x *SubmitMultiplayerResultRequest) GetOpponentScore() int32 {
+	if x != nil {
+		return x.OpponentScore
+	}
+	return 0
+}
+
+func (x *SubmitMultiplayerResultRequest) GetMatchDurationSeconds() int32 {
+	if x != nil {
+		return x.MatchDurationSeconds
+	}
+	return 0
+}
+
+type SubmitMultiplayerResultResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitMultiplayerResultResponse) Reset() {
+	*x = SubmitMultiplayerResultResponse{}
+	mi := &file_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitMultiplayerResultResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitMultiplayerResultResponse) ProtoMessage() {}
+
+func (x *SubmitMultiplayerResultResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitMultiplayerResultResponse.ProtoReflect.Descriptor instead.
+func (*SubmitMultiplayerResultResponse) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SubmitMultiplayerResultResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SubmitMultiplayerResultResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 var File_service_proto protoreflect.FileDescriptor
 
 const file_service_proto_rawDesc = "" +
@@ -335,10 +480,11 @@ const file_service_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"I\n" +
 	"\x13SubmitScoreResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"E\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"p\n" +
 	"\x15GetLeaderboardRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x05R\x06offset\"\x96\x01\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12)\n" +
+	"\x10leaderboard_code\x18\x03 \x01(\tR\x0fleaderboardCode\"\x96\x01\n" +
 	"\x10LeaderboardEntry\x12\x12\n" +
 	"\x04rank\x18\x01 \x01(\x05R\x04rank\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12!\n" +
@@ -348,13 +494,29 @@ const file_service_proto_rawDesc = "" +
 	"\x16GetLeaderboardResponse\x123\n" +
 	"\aentries\x18\x01 \x03(\v2\x19.service.LeaderboardEntryR\aentries\x12\x1f\n" +
 	"\vtotal_count\x18\x02 \x01(\x05R\n" +
-	"totalCount2\xc3\x03\n" +
+	"totalCount\"\xea\x01\n" +
+	"\x1eSubmitMultiplayerResultRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x10\n" +
+	"\x03won\x18\x02 \x01(\bR\x03won\x12\x1f\n" +
+	"\vopponent_id\x18\x03 \x01(\tR\n" +
+	"opponentId\x12\x1f\n" +
+	"\vlocal_score\x18\x04 \x01(\x05R\n" +
+	"localScore\x12%\n" +
+	"\x0eopponent_score\x18\x05 \x01(\x05R\ropponentScore\x124\n" +
+	"\x16match_duration_seconds\x18\x06 \x01(\x05R\x14matchDurationSeconds\"U\n" +
+	"\x1fSubmitMultiplayerResultResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xfd\x05\n" +
 	"\vPongService\x12\xf6\x01\n" +
 	"\vSubmitScore\x12\x1b.service.SubmitScoreRequest\x1a\x1c.service.SubmitScoreResponse\"\xab\x01\x92AX\x12\fSubmit score\x1a:Submit player's score to update statistics and leaderboardb\f\n" +
 	"\n" +
 	"\n" +
 	"\x06Bearer\x12\x00\x8a\xb5\x18,NAMESPACE:{namespace}:USER:{userId}:STATITEM\x90\xb5\x18\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/public/scores\x12\xba\x01\n" +
-	"\x0eGetLeaderboard\x12\x1e.service.GetLeaderboardRequest\x1a\x1f.service.GetLeaderboardResponse\"g\x92AF\x12\x0fGet leaderboard\x1a3Get top scores from the leaderboard (public access)\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/leaderboardB\xb5\x01\x92A>\x12\x14\n" +
+	"\x0eGetLeaderboard\x12\x1e.service.GetLeaderboardRequest\x1a\x1f.service.GetLeaderboardResponse\"g\x92AF\x12\x0fGet leaderboard\x1a3Get top scores from the leaderboard (public access)\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/leaderboard\x12\xb7\x02\n" +
+	"\x17SubmitMultiplayerResult\x12'.service.SubmitMultiplayerResultRequest\x1a(.service.SubmitMultiplayerResultResponse\"\xc8\x01\x92Ah\x12\x19Submit multiplayer result\x1a=Submit multiplayer match result to update win/loss statisticsb\f\n" +
+	"\n" +
+	"\n" +
+	"\x06Bearer\x12\x00\x8a\xb5\x18,NAMESPACE:{namespace}:USER:{userId}:STATITEM\x90\xb5\x18\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/public/multiplayer/resultsB\xb5\x01\x92A>\x12\x14\n" +
 	"\rPong Game API2\x031.0\"\x05/pongZ\x1f\n" +
 	"\x1d\n" +
 	"\x06Bearer\x12\x13\b\x02\x1a\rAuthorization \x02\n" +
@@ -372,24 +534,28 @@ func file_service_proto_rawDescGZIP() []byte {
 	return file_service_proto_rawDescData
 }
 
-var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_service_proto_goTypes = []any{
-	(*SubmitScoreRequest)(nil),     // 0: service.SubmitScoreRequest
-	(*SubmitScoreResponse)(nil),    // 1: service.SubmitScoreResponse
-	(*GetLeaderboardRequest)(nil),  // 2: service.GetLeaderboardRequest
-	(*LeaderboardEntry)(nil),       // 3: service.LeaderboardEntry
-	(*GetLeaderboardResponse)(nil), // 4: service.GetLeaderboardResponse
-	nil,                            // 5: service.SubmitScoreRequest.MetadataEntry
+	(*SubmitScoreRequest)(nil),              // 0: service.SubmitScoreRequest
+	(*SubmitScoreResponse)(nil),             // 1: service.SubmitScoreResponse
+	(*GetLeaderboardRequest)(nil),           // 2: service.GetLeaderboardRequest
+	(*LeaderboardEntry)(nil),                // 3: service.LeaderboardEntry
+	(*GetLeaderboardResponse)(nil),          // 4: service.GetLeaderboardResponse
+	(*SubmitMultiplayerResultRequest)(nil),  // 5: service.SubmitMultiplayerResultRequest
+	(*SubmitMultiplayerResultResponse)(nil), // 6: service.SubmitMultiplayerResultResponse
+	nil,                                     // 7: service.SubmitScoreRequest.MetadataEntry
 }
 var file_service_proto_depIdxs = []int32{
-	5, // 0: service.SubmitScoreRequest.metadata:type_name -> service.SubmitScoreRequest.MetadataEntry
+	7, // 0: service.SubmitScoreRequest.metadata:type_name -> service.SubmitScoreRequest.MetadataEntry
 	3, // 1: service.GetLeaderboardResponse.entries:type_name -> service.LeaderboardEntry
 	0, // 2: service.PongService.SubmitScore:input_type -> service.SubmitScoreRequest
 	2, // 3: service.PongService.GetLeaderboard:input_type -> service.GetLeaderboardRequest
-	1, // 4: service.PongService.SubmitScore:output_type -> service.SubmitScoreResponse
-	4, // 5: service.PongService.GetLeaderboard:output_type -> service.GetLeaderboardResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	5, // 4: service.PongService.SubmitMultiplayerResult:input_type -> service.SubmitMultiplayerResultRequest
+	1, // 5: service.PongService.SubmitScore:output_type -> service.SubmitScoreResponse
+	4, // 6: service.PongService.GetLeaderboard:output_type -> service.GetLeaderboardResponse
+	6, // 7: service.PongService.SubmitMultiplayerResult:output_type -> service.SubmitMultiplayerResultResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -407,7 +573,7 @@ func file_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_service_proto_rawDesc), len(file_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

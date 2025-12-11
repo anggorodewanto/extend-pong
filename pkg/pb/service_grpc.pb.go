@@ -23,8 +23,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PongService_SubmitScore_FullMethodName    = "/service.PongService/SubmitScore"
-	PongService_GetLeaderboard_FullMethodName = "/service.PongService/GetLeaderboard"
+	PongService_SubmitScore_FullMethodName             = "/service.PongService/SubmitScore"
+	PongService_GetLeaderboard_FullMethodName          = "/service.PongService/GetLeaderboard"
+	PongService_SubmitMultiplayerResult_FullMethodName = "/service.PongService/SubmitMultiplayerResult"
 )
 
 // PongServiceClient is the client API for PongService service.
@@ -35,6 +36,8 @@ type PongServiceClient interface {
 	SubmitScore(ctx context.Context, in *SubmitScoreRequest, opts ...grpc.CallOption) (*SubmitScoreResponse, error)
 	// Get leaderboard from AGS (public access - no auth required)
 	GetLeaderboard(ctx context.Context, in *GetLeaderboardRequest, opts ...grpc.CallOption) (*GetLeaderboardResponse, error)
+	// Submit multiplayer match result to AGS Statistics
+	SubmitMultiplayerResult(ctx context.Context, in *SubmitMultiplayerResultRequest, opts ...grpc.CallOption) (*SubmitMultiplayerResultResponse, error)
 }
 
 type pongServiceClient struct {
@@ -65,6 +68,16 @@ func (c *pongServiceClient) GetLeaderboard(ctx context.Context, in *GetLeaderboa
 	return out, nil
 }
 
+func (c *pongServiceClient) SubmitMultiplayerResult(ctx context.Context, in *SubmitMultiplayerResultRequest, opts ...grpc.CallOption) (*SubmitMultiplayerResultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitMultiplayerResultResponse)
+	err := c.cc.Invoke(ctx, PongService_SubmitMultiplayerResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PongServiceServer is the server API for PongService service.
 // All implementations should embed UnimplementedPongServiceServer
 // for forward compatibility.
@@ -73,6 +86,8 @@ type PongServiceServer interface {
 	SubmitScore(context.Context, *SubmitScoreRequest) (*SubmitScoreResponse, error)
 	// Get leaderboard from AGS (public access - no auth required)
 	GetLeaderboard(context.Context, *GetLeaderboardRequest) (*GetLeaderboardResponse, error)
+	// Submit multiplayer match result to AGS Statistics
+	SubmitMultiplayerResult(context.Context, *SubmitMultiplayerResultRequest) (*SubmitMultiplayerResultResponse, error)
 }
 
 // UnimplementedPongServiceServer should be embedded to have
@@ -87,6 +102,9 @@ func (UnimplementedPongServiceServer) SubmitScore(context.Context, *SubmitScoreR
 }
 func (UnimplementedPongServiceServer) GetLeaderboard(context.Context, *GetLeaderboardRequest) (*GetLeaderboardResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLeaderboard not implemented")
+}
+func (UnimplementedPongServiceServer) SubmitMultiplayerResult(context.Context, *SubmitMultiplayerResultRequest) (*SubmitMultiplayerResultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitMultiplayerResult not implemented")
 }
 func (UnimplementedPongServiceServer) testEmbeddedByValue() {}
 
@@ -144,6 +162,24 @@ func _PongService_GetLeaderboard_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PongService_SubmitMultiplayerResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitMultiplayerResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PongServiceServer).SubmitMultiplayerResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PongService_SubmitMultiplayerResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PongServiceServer).SubmitMultiplayerResult(ctx, req.(*SubmitMultiplayerResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PongService_ServiceDesc is the grpc.ServiceDesc for PongService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -158,6 +194,10 @@ var PongService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLeaderboard",
 			Handler:    _PongService_GetLeaderboard_Handler,
+		},
+		{
+			MethodName: "SubmitMultiplayerResult",
+			Handler:    _PongService_SubmitMultiplayerResult_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -6,10 +6,18 @@ package ags
 
 import "context"
 
+// StatUpdate represents a single stat update operation
+type StatUpdate struct {
+	StatCode string
+	Value    float64
+}
+
 // StatisticsService defines the interface for AGS Statistics operations
 type StatisticsService interface {
 	// UpdateUserStatItem updates a user's stat item value
 	UpdateUserStatItem(ctx context.Context, namespace, userID, statCode string, value float64) error
+	// BulkUpdateUserStats updates multiple stat items for a user in a single call
+	BulkUpdateUserStats(ctx context.Context, namespace, userID string, updates []StatUpdate) error
 }
 
 // LeaderboardEntry represents a single entry in the leaderboard

@@ -9,8 +9,8 @@ const CONFIG = {
   BACKEND_URL: window.location.origin + '/' + window.location.pathname.split('/')[1],
 
   // Game Canvas
-  CANVAS_WIDTH: 800,
-  CANVAS_HEIGHT: 600,
+  CANVAS_WIDTH: 640,
+  CANVAS_HEIGHT: 480,
 
   // Paddle Configuration
   PADDLE_WIDTH: 10,
@@ -44,9 +44,57 @@ const CONFIG = {
   LEADERBOARD_CACHE_TTL: 30000, // 30 seconds in milliseconds
 
   // Animation
-  TARGET_FPS: 60
+  TARGET_FPS: 60,
+
+  // Win condition
+  WINNING_SCORE: 11,
+
+  // Multiplayer Configuration
+  MULTIPLAYER: {
+    // Matchmaking
+    MATCH_POOL: 'pong-1v1',
+    TICKET_TIMEOUT_SEC: 120,
+
+    // Session
+    SESSION_TEMPLATE: 'pong-p2p-session',
+    MIN_PLAYERS: 2,
+    MAX_PLAYERS: 2,
+
+    // Countdown before game starts
+    COUNTDOWN_SECONDS: 3,
+
+    // Networking
+    TICK_RATE: 60,              // Game simulation rate (Hz)
+    SEND_RATE: 30,              // Network update rate (Hz)
+    INTERPOLATION_DELAY_MS: 50, // Buffer for smooth interpolation
+
+    // Lag compensation
+    LAG_COMPENSATION_ENABLED: true,   // Rewind remote paddle for fair collision detection
+    MAX_LAG_COMPENSATION_MS: 200,     // Base maximum rewind time
+    MAX_LAG_COMPENSATION_MS_RELAY: 350, // Extended max for RELAY connections (high latency expected)
+    ADAPTIVE_LAG_COMPENSATION: true,  // Dynamically adjust based on measured latency
+
+    // WebRTC DataChannel
+    DATA_CHANNEL_NAME: 'pong-game',
+    ORDERED: false,             // Unordered for lowest latency
+    MAX_RETRANSMITS: 0,         // No retransmits for real-time
+
+    // Reconnection
+    MAX_RECONNECT_ATTEMPTS: 3,
+    RECONNECT_DELAY_MS: 1000,
+
+    // Timeouts
+    SIGNALING_TIMEOUT_MS: 10000,
+    ICE_GATHERING_TIMEOUT_MS: 5000,
+    CONNECTION_TIMEOUT_MS: 15000,
+
+    // Lobby WebSocket
+    LOBBY_RECONNECT_DELAY_MS: 1000,
+    LOBBY_MAX_RECONNECT_ATTEMPTS: 5
+  }
 };
 
 // Freeze config to prevent accidental modifications
 Object.freeze(CONFIG);
 Object.freeze(CONFIG.COLORS);
+Object.freeze(CONFIG.MULTIPLAYER);
