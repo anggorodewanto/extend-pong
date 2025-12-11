@@ -15,18 +15,19 @@ import "google/api/annotations.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 import "permission.proto";
 
-service Service {
+service PongService {
 
-  rpc CreateOrUpdateGuildProgress (CreateOrUpdateGuildProgressRequest) returns (CreateOrUpdateGuildProgressResponse) {
+  // Submit player's score to AGS Statistics
+  rpc SubmitScore (SubmitScoreRequest) returns (SubmitScoreResponse) {
     option (permission.action) = CREATE;
-    option (permission.resource) = "ADMIN:NAMESPACE:{namespace}:CLOUDSAVE:RECORD";
+    option (permission.resource) = "NAMESPACE:{namespace}:USER:{userId}:STATITEM";
     option (google.api.http) = {
-      post: "/v1/admin/namespace/{namespace}/progress"
+      post: "/v1/public/scores"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "Update Guild progression"
-      description: "Update Guild progression if not existed yet will create a new one"
+      summary: "Submit score"
+      description: "Submit player's score to update statistics and leaderboard"
       security: {
         security_requirement: {
           key: "Bearer"
@@ -36,15 +37,28 @@ service Service {
     };
   }
 
-  rpc GetGuildProgress (GetGuildProgressRequest) returns (GetGuildProgressResponse) {
-    option (permission.action) = READ;
-    option (permission.resource) = "ADMIN:NAMESPACE:{namespace}:CLOUDSAVE:RECORD";
+  // Get leaderboard from AGS (public access - no auth required)
+  rpc GetLeaderboard (GetLeaderboardRequest) returns (GetLeaderboardResponse) {
     option (google.api.http) = {
-      get: "/v1/admin/namespace/{namespace}/progress/{guild_id}"
+      get: "/v1/public/leaderboard"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "Get guild progression"
-      description: "Get guild progression"
+      summary: "Get leaderboard"
+      description: "Get top scores from the leaderboard (public access)"
+    };
+  }
+
+  // Submit multiplayer match result to AGS Statistics
+  rpc SubmitMultiplayerResult (SubmitMultiplayerResultRequest) returns (SubmitMultiplayerResultResponse) {
+    option (permission.action) = CREATE;
+    option (permission.resource) = "NAMESPACE:{namespace}:USER:{userId}:STATITEM";
+    option (google.api.http) = {
+      post: "/v1/public/multiplayer/results"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Submit multiplayer result"
+      description: "Submit multiplayer match result to update win/loss statistics"
       security: {
         security_requirement: {
           key: "Bearer"
@@ -55,37 +69,60 @@ service Service {
   }
 }
 
-message CreateOrUpdateGuildProgressRequest {
-  string namespace = 1;
-  GuildProgress guild_progress = 2;
+// Request/Response messages for SubmitScore
+message SubmitScoreRequest {
+  string user_id = 1;
+  int32 score = 2;
+  map<string, string> metadata = 3;  // Optional: game duration, difficulty, etc.
 }
 
-message CreateOrUpdateGuildProgressResponse {
-  GuildProgress guild_progress = 1;
+message SubmitScoreResponse {
+  bool success = 1;
+  string message = 2;
 }
 
-message GetGuildProgressRequest {
-  string namespace = 1;
-  string guild_id = 2;
+// Request/Response messages for GetLeaderboard
+message GetLeaderboardRequest {
+  int32 limit = 1;   // Default: 10, Max: 100
+  int32 offset = 2;
+  string leaderboard_code = 3;  // Optional: leaderboard code (default: pong-leaderboard)
 }
 
-message GetGuildProgressResponse {
-  GuildProgress guild_progress = 1;
+message LeaderboardEntry {
+  int32 rank = 1;
+  string user_id = 2;
+  string display_name = 3;
+  int32 score = 4;
+  int64 timestamp = 5;
 }
 
-message GuildProgress {
-  string guild_id = 1;
-  string namespace = 2;
-  map<string, int32> objectives = 3;
+message GetLeaderboardResponse {
+  repeated LeaderboardEntry entries = 1;
+  int32 total_count = 2;
+}
+
+// Request/Response messages for SubmitMultiplayerResult
+message SubmitMultiplayerResultRequest {
+  string user_id = 1;
+  bool won = 2;
+  string opponent_id = 3;           // Optional: opponent's user ID
+  int32 local_score = 4;            // Player's final score
+  int32 opponent_score = 5;         // Opponent's final score
+  int32 match_duration_seconds = 6; // Optional: match duration in seconds
+}
+
+message SubmitMultiplayerResultResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 // OpenAPI options for the entire API.
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
-    title: "Service API";
+    title: "Pong Game API";
     version: "1.0";
   };
-  base_path: "/service";
+  base_path: "/pong";
 
   security_definitions: {
     security: {

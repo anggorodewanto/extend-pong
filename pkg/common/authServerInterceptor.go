@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -27,7 +28,7 @@ import (
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/service/iam"
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/utils/auth/validator"
 
-	pb "extend-custom-guild-service/pkg/pb"
+	pb "extend-pong/pkg/pb"
 )
 
 var (
@@ -158,13 +159,40 @@ func getNamespace() string {
 	return GetEnv("AB_NAMESPACE", "accelbyte")
 }
 
+// extractUserIDFromToken extracts the user ID (sub claim) from a JWT token
+// without validating the signature (validation is done separately by the SDK)
+func extractUserIDFromToken(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid JWT format")
+	}
+
+	// Decode the payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("failed to decode JWT payload: %w", err)
+	}
+
+	var claims struct {
+		Subject string `json:"sub"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", fmt.Errorf("failed to parse JWT claims: %w", err)
+	}
+
+	if claims.Subject == "" {
+		return "", fmt.Errorf("JWT missing subject claim")
+	}
+
+	return claims.Subject, nil
+}
+
 func checkAuthorizationMetadata(ctx context.Context, permission *iam.Permission) error {
 	if Validator == nil {
 		return status.Error(codes.Internal, "authorization token validator is not set")
 	}
 
 	meta, found := metadata.FromIncomingContext(ctx)
-
 	if !found {
 		return status.Error(codes.Unauthenticated, "metadata is missing")
 	}
@@ -181,8 +209,17 @@ func checkAuthorizationMetadata(ctx context.Context, permission *iam.Permission)
 	token := strings.TrimPrefix(authorization, "Bearer ")
 	namespace := getNamespace()
 
-	err := Validator.Validate(token, permission, &namespace, nil)
+	// Extract user ID from token for user-scoped permission validation
+	var userIDPtr *string
+	if permission != nil && strings.Contains(permission.Resource, "{userId}") {
+		userID, err := extractUserIDFromToken(token)
+		if err != nil {
+			return status.Errorf(codes.Unauthenticated, "failed to extract user ID from token: %v", err)
+		}
+		userIDPtr = &userID
+	}
 
+	err := Validator.Validate(token, permission, &namespace, userIDPtr)
 	if err != nil {
 		return status.Error(codes.PermissionDenied, err.Error())
 	}

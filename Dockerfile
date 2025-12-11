@@ -101,6 +101,10 @@ COPY third_party third_party
 RUN mkdir -p gateway && \
     cp -r /build/gateway/apidocs gateway/ || true
 
+# Copy static files for the web frontend
+COPY static static
+RUN chmod -R 755 static && find static -type f -exec chmod 644 {} \;
+
 # Plugin Arch gRPC Server Port.
 EXPOSE 6565
 

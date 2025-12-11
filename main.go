@@ -8,10 +8,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"extend-custom-guild-service/pkg/service"
-	"extend-custom-guild-service/pkg/storage"
+	"extend-pong/pkg/service"
+	"extend-pong/pkg/service/ags"
 	"fmt"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -23,9 +24,7 @@ import (
 
 	"github.com/go-openapi/loads"
 
-	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/service/cloudsave"
-
-	"extend-custom-guild-service/pkg/common"
+	"extend-pong/pkg/common"
 
 	"github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/repository"
 
@@ -45,7 +44,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
-	pb "extend-custom-guild-service/pkg/pb"
+	pb "extend-pong/pkg/pb"
 
 	sdkAuth "github.com/AccelByte/accelbyte-go-sdk/services-api/pkg/utils/auth"
 	prometheusGrpc "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -60,10 +59,27 @@ const (
 )
 
 var (
-	serviceName = common.GetEnv("OTEL_SERVICE_NAME", "ExtendCustomServiceGo")
+	serviceName = common.GetEnv("OTEL_SERVICE_NAME", "PongService")
 	logLevelStr = common.GetEnv("LOG_LEVEL", logrus.InfoLevel.String())
-	basePath	= common.GetBasePath()
+	basePath    = common.GetBasePath()
 )
+
+func init() {
+	// Register MIME types for static files (fixes Firefox X-Content-Type-Options: nosniff blocking)
+	_ = mime.AddExtensionType(".css", "text/css")
+	_ = mime.AddExtensionType(".js", "application/javascript")
+	_ = mime.AddExtensionType(".json", "application/json")
+	_ = mime.AddExtensionType(".html", "text/html")
+	_ = mime.AddExtensionType(".png", "image/png")
+	_ = mime.AddExtensionType(".jpg", "image/jpeg")
+	_ = mime.AddExtensionType(".jpeg", "image/jpeg")
+	_ = mime.AddExtensionType(".gif", "image/gif")
+	_ = mime.AddExtensionType(".svg", "image/svg+xml")
+	_ = mime.AddExtensionType(".ico", "image/x-icon")
+	_ = mime.AddExtensionType(".woff", "font/woff")
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
+	_ = mime.AddExtensionType(".ttf", "font/ttf")
+}
 
 func main() {
 	logrus.Infof("Starting %s...", serviceName)
@@ -117,7 +133,7 @@ func main() {
 		common.Validator = common.NewTokenValidator(oauthService, time.Duration(refreshInterval)*time.Second, true)
 		err := common.Validator.Initialize(ctx)
 		if err != nil {
-			logrus.Infof(err.Error())
+			logrus.Infof("validator initialization error: %v", err)
 		}
 
 		unaryServerInterceptor := common.NewUnaryAuthServerIntercept()
@@ -143,17 +159,27 @@ func main() {
 		logrus.Fatalf("Error unable to login using clientId and clientSecret: %v", err)
 	}
 
-	// Initialize the AccelByte CloudSave service
-	adminGameRecordService := cloudsave.AdminGameRecordService{
-		Client:          factory.NewCloudsaveClient(configRepo),
-		TokenRepository: tokenRepo,
+	// Initialize AGS services (real or mock based on env var)
+	var statisticsService ags.StatisticsService
+	var leaderboardService ags.LeaderboardService
+
+	namespace := common.GetEnv("AB_NAMESPACE", "accelbyte")
+
+	if strings.ToLower(common.GetEnv("AGS_MOCK_ENABLED", "false")) == "true" {
+		logrus.Info("Using MOCK AGS services")
+		linkedMocks := ags.NewLinkedMockServices(namespace, service.PongHighScoreStatCode, service.PongLeaderboardCode)
+		linkedMocks.SeedSampleData()
+		statisticsService = linkedMocks
+		leaderboardService = linkedMocks.Leaderboard
+	} else {
+		logrus.Info("Using REAL AGS services")
+		statisticsService = ags.NewAGSStatisticsService(configRepo, tokenRepo, logrusLogger)
+		leaderboardService = ags.NewAGSLeaderboardService(configRepo, tokenRepo, logrusLogger)
 	}
 
-	cloudSaveStorage := storage.NewCloudSaveStorage(&adminGameRecordService)
-
-	// Register Guild Service
-	myServiceServer := service.NewMyServiceServer(tokenRepo, configRepo, refreshRepo, cloudSaveStorage)
-	pb.RegisterServiceServer(s, myServiceServer)
+	// Register Pong Service
+	pongServiceServer := service.NewPongServiceServer(namespace, statisticsService, leaderboardService)
+	pb.RegisterPongServiceServer(s, pongServiceServer)
 
 	// Enable gRPC Reflection
 	reflection.Register(s)
@@ -167,10 +193,13 @@ func main() {
 		logrus.Fatalf("Failed to create gRPC-Gateway: %v", err)
 	}
 
+	// Create TURN proxy handler
+	turnProxy := NewTURNProxyHandler(configRepo, tokenRepo)
+
 	// Start the gRPC-Gateway HTTP server
 	go func() {
 		swaggerDir := "gateway/apidocs" // Path to swagger directory
-		grpcGatewayHTTPServer := newGRPCGatewayHTTPServer(fmt.Sprintf(":%d", grpcGatewayHTTPPort), grpcGateway, logrus.New(), swaggerDir)
+		grpcGatewayHTTPServer := newGRPCGatewayHTTPServer(fmt.Sprintf(":%d", grpcGatewayHTTPPort), grpcGateway, logrus.New(), swaggerDir, turnProxy)
 		logrus.Infof("Starting gRPC-Gateway HTTP server on port %d", grpcGatewayHTTPPort)
 		if err := grpcGatewayHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logrus.Fatalf("Failed to run gRPC-Gateway HTTP server: %v", err)
@@ -216,7 +245,7 @@ func main() {
 		),
 	)
 
-	// Start gRPC Server	
+	// Start gRPC Server
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcServerPort))
 	if err != nil {
 		logrus.Fatalf("Failed to listen to tcp:%d: %v", grpcServerPort, err)
@@ -240,17 +269,27 @@ func main() {
 }
 
 func newGRPCGatewayHTTPServer(
-	addr string, handler http.Handler, logger *logrus.Logger, swaggerDir string,
+	addr string, grpcGateway http.Handler, logger *logrus.Logger, swaggerDir string,
+	turnProxy *TURNProxyHandler,
 ) *http.Server {
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 
-	// Add the gRPC-Gateway handler
-	mux.Handle("/", handler)
-
 	// Serve Swagger UI and JSON
 	serveSwaggerUI(mux)
 	serveSwaggerJSON(mux, swaggerDir)
+
+	// Register TURN proxy endpoints
+	if turnProxy != nil {
+		mux.HandleFunc(basePath+"/turn-servers", turnProxy.GetTURNServers)
+		mux.HandleFunc(basePath+"/turn-credentials/", turnProxy.GetTURNCredentials)
+		logrus.Infof("Registered TURN proxy endpoints at %s/turn-servers and %s/turn-credentials/", basePath, basePath)
+	}
+
+	// Create combined handler for API and static files
+	staticHandler := createStaticHandler()
+	combinedHandler := createCombinedHandler(grpcGateway, staticHandler)
+	mux.Handle("/", combinedHandler)
 
 	// Add logging middleware
 	loggedMux := loggingMiddleware(logger, mux)
@@ -262,15 +301,28 @@ func newGRPCGatewayHTTPServer(
 	}
 }
 
+// responseWriter wraps http.ResponseWriter to capture the status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
 // loggingMiddleware is a middleware that logs HTTP requests
 func loggingMiddleware(logger *logrus.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(wrapped, r)
 		duration := time.Since(start)
 		logger.WithFields(logrus.Fields{
 			"method":   r.Method,
 			"path":     r.URL.Path,
+			"status":   wrapped.statusCode,
 			"duration": duration,
 		}).Info("HTTP request")
 	})
@@ -326,4 +378,173 @@ func serveSwaggerJSON(mux *http.ServeMux, swaggerDir string) {
 	})
 	apidocsPath := fmt.Sprintf("%s/apidocs/api.json", basePath)
 	mux.Handle(apidocsPath, fileHandler)
+}
+
+// TURNProxyHandler handles proxying TURN server requests to AGS
+type TURNProxyHandler struct {
+	configRepo repository.ConfigRepository
+	tokenRepo  repository.TokenRepository
+}
+
+func NewTURNProxyHandler(configRepo repository.ConfigRepository, tokenRepo repository.TokenRepository) *TURNProxyHandler {
+	return &TURNProxyHandler{
+		configRepo: configRepo,
+		tokenRepo:  tokenRepo,
+	}
+}
+
+// GetTURNServers proxies the request to AGS /turnmanager/turn
+func (h *TURNProxyHandler) GetTURNServers(w http.ResponseWriter, r *http.Request) {
+	agsBaseURL := h.configRepo.GetJusticeBaseUrl()
+	targetURL := fmt.Sprintf("%s/turnmanager/turn", agsBaseURL)
+
+	token, err := h.tokenRepo.GetToken()
+	if err != nil || token == nil {
+		http.Error(w, "Failed to get access token", http.StatusInternalServerError)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	// Use the user's token from the Authorization header if present, otherwise use client token
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	} else {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token.AccessToken))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Errorf("TURN proxy error: %v", err)
+		http.Error(w, "Failed to fetch TURN servers", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers and body
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = copyResponseBody(w, resp)
+}
+
+// GetTURNCredentials proxies the request to AGS /turnmanager/turn/secret/{region}/{ip}/{port}
+func (h *TURNProxyHandler) GetTURNCredentials(w http.ResponseWriter, r *http.Request) {
+	// Extract path parameters from URL
+	// Expected path: /turn-credentials/{region}/{ip}/{port}
+	path := strings.TrimPrefix(r.URL.Path, basePath+"/turn-credentials/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 3 {
+		http.Error(w, "Invalid path: expected /turn-credentials/{region}/{ip}/{port}", http.StatusBadRequest)
+		return
+	}
+	region, ip, port := parts[0], parts[1], parts[2]
+
+	agsBaseURL := h.configRepo.GetJusticeBaseUrl()
+	targetURL := fmt.Sprintf("%s/turnmanager/turn/secret/%s/%s/%s", agsBaseURL, region, ip, port)
+
+	token, err := h.tokenRepo.GetToken()
+	if err != nil || token == nil {
+		http.Error(w, "Failed to get access token", http.StatusInternalServerError)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	// Use the user's token from the Authorization header if present
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	} else {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token.AccessToken))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Errorf("TURN credentials proxy error: %v", err)
+		http.Error(w, "Failed to fetch TURN credentials", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = copyResponseBody(w, resp)
+}
+
+func copyResponseBody(w http.ResponseWriter, resp *http.Response) (int64, error) {
+	buf := make([]byte, 32*1024)
+	var written int64
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			nw, writeErr := w.Write(buf[:n])
+			written += int64(nw)
+			if writeErr != nil {
+				return written, writeErr
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	return written, nil
+}
+
+func createStaticHandler() http.Handler {
+	staticDir := common.GetEnv("STATIC_FILES_PATH", "./static")
+
+	// Check if static directory exists
+	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
+		logrus.Warnf("Static files directory '%s' does not exist", staticDir)
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
+	}
+
+	logrus.Infof("Static files will be served from '%s' at path '%s/'", staticDir, basePath)
+
+	return http.StripPrefix(basePath, http.FileServer(http.Dir(staticDir)))
+}
+
+func createCombinedHandler(grpcGateway http.Handler, staticHandler http.Handler) http.Handler {
+	apiPrefix := basePath + "/v1/"
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Route API requests to gRPC gateway
+		if strings.HasPrefix(r.URL.Path, apiPrefix) {
+			grpcGateway.ServeHTTP(w, r)
+
+			return
+		}
+
+		// Redirect basePath without trailing slash to basePath with trailing slash
+		// This ensures relative paths in HTML resolve correctly
+		if r.URL.Path == basePath {
+			http.Redirect(w, r, basePath+"/", http.StatusMovedPermanently)
+
+			return
+		}
+
+		// Route requests under basePath to static files
+		if strings.HasPrefix(r.URL.Path, basePath+"/") {
+			staticHandler.ServeHTTP(w, r)
+
+			return
+		}
+
+		// Everything else goes to gRPC gateway (for potential other routes)
+		grpcGateway.ServeHTTP(w, r)
+	})
 }

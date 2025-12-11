@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pong - AGS Demo Game</title>
+  <link rel="stylesheet" href="css/pong.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1>PONG</h1>
+    <p class="subtitle">AccelByte Gaming Services Demo</p>
+  </header>
+
+  <!-- Mode Selection (above game container) -->
+  <div class="mode-selection" id="modeSelection">
+    <button class="btn mode-btn active" id="singlePlayerBtn" data-mode="single">
+      <span class="mode-icon">&#127918;</span>
+      Single Player
+    </button>
+    <button class="btn mode-btn" id="multiplayerBtn" data-mode="multi">
+      <span class="mode-icon">&#128101;</span>
+      Multiplayer
+    </button>
+  </div>
+
+  <!-- Main Game Container -->
+  <main class="game-container">
+    <!-- Game Panel -->
+    <section class="game-panel">
+      <!-- Canvas -->
+      <div class="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- P2P Connection Overlay -->
+        <div class="p2p-overlay" id="p2pOverlay">
+          <div class="p2p-overlay-content">
+            <div class="p2p-spinner" id="p2pSpinner"></div>
+            <div class="p2p-status-title" id="p2pStatusTitle">Connecting to Peer</div>
+            <div class="p2p-status-message" id="p2pStatusMessage">Establishing connection...</div>
+
+            <!-- Progress Steps -->
+            <div class="p2p-progress-steps" id="p2pProgressSteps">
+              <div class="p2p-step" id="p2pStepHost" data-step="host">
+                <div class="p2p-step-indicator">1</div>
+                <div class="p2p-step-label">Host Check</div>
+              </div>
+              <div class="p2p-step-connector" id="p2pConnector1"></div>
+              <div class="p2p-step" id="p2pStepIce" data-step="ice">
+                <div class="p2p-step-indicator">2</div>
+                <div class="p2p-step-label">ICE Offer</div>
+              </div>
+              <div class="p2p-step-connector" id="p2pConnector2"></div>
+              <div class="p2p-step" id="p2pStepSdp" data-step="sdp">
+                <div class="p2p-step-indicator">3</div>
+                <div class="p2p-step-label">SDP Exchange</div>
+              </div>
+              <div class="p2p-step-connector" id="p2pConnector3"></div>
+              <div class="p2p-step" id="p2pStepConnect" data-step="connect">
+                <div class="p2p-step-indicator">4</div>
+                <div class="p2p-step-label">Connect</div>
+              </div>
+            </div>
+
+            <button class="btn btn-secondary p2p-retry-btn" id="p2pRetryBtn" style="display: none;">
+              Retry Connection
+            </button>
+            <button class="btn btn-secondary" id="p2pCancelBtn">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Connection Quality Indicator -->
+        <div class="connection-quality-display" id="connectionQualityDisplay" style="display: none;">
+          <div class="connection-type" id="connectionType">
+            <span class="connection-type-icon" id="connectionTypeIcon"></span>
+            <span class="connection-type-label" id="connectionTypeLabel">Direct</span>
+          </div>
+          <div class="connection-latency" id="connectionLatency">0ms</div>
+        </div>
+      </div>
+
+      <!-- Controls (Single Player) -->
+      <div class="controls" id="singlePlayerControls">
+        <button class="btn btn-primary" id="startBtn">Start Game</button>
+        <button class="btn btn-secondary" id="pauseBtn" disabled>Pause</button>
+        <button class="btn btn-secondary" id="debugScoreBtn" style="display: none; background: #ff6b6b;">+1 Score (Debug)</button>
+      </div>
+
+      <!-- Controls (Multiplayer) -->
+      <div class="controls multiplayer-controls" id="multiplayerControls" style="display: none;">
+        <div class="matchmaking-panel" id="matchmakingPanel">
+          <button class="btn btn-primary btn-large" id="findMatchBtn">
+            <span class="btn-icon">&#128269;</span>
+            Find Match
+          </button>
+        </div>
+        <div class="queue-panel" id="queuePanel" style="display: none;">
+          <div class="queue-status">
+            <div class="queue-spinner"></div>
+            <div class="queue-info">
+              <span class="queue-text">Finding opponent...</span>
+              <span class="queue-timer" id="queueTimer">0:00</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" id="cancelMatchBtn">Cancel</button>
+        </div>
+        <div class="match-found-panel" id="matchFoundPanel" style="display: none;">
+          <div class="match-found-status">
+            <span class="match-found-icon">&#9989;</span>
+            <span class="match-found-text">Match Found!</span>
+          </div>
+          <div class="opponent-info" id="opponentInfo">
+            <span>Connecting to opponent...</span>
+          </div>
+          <div class="match-rules">First to 11 wins</div>
+          <button class="btn btn-secondary" id="leaveSessionBtn">Leave Session</button>
+        </div>
+        <div class="multiplayer-game-controls" id="multiplayerGameControls" style="display: none;">
+          <button class="btn btn-secondary" id="leaveMatchBtn">Leave Match</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Side Panel -->
+    <aside class="side-panel">
+      <!-- User Info -->
+      <div class="card">
+        <h2>Player</h2>
+        <div class="user-info">
+          <div class="user-status">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span class="user-name" id="userName">Not logged in</span>
+          </div>
+          <div class="user-id-container">
+            <div class="user-id" id="userId"></div>
+            <button class="btn-copy" id="copyUserIdBtn" title="Copy User ID" style="display: none;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <button class="btn btn-secondary login-btn" id="loginBtn">Login</button>
+        </div>
+        <!-- Lobby Status -->
+        <div class="lobby-status" id="lobbyStatusContainer" style="display: none;">
+          <div class="lobby-status-row">
+            <span class="lobby-status-label">Lobby:</span>
+            <span class="lobby-status-indicator" id="lobbyStatusIndicator"></span>
+            <span class="lobby-status-text" id="lobbyStatusText">Disconnected</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leaderboard -->
+      <div class="card">
+        <h2>Leaderboard</h2>
+        <div class="leaderboard-tabs">
+          <button class="leaderboard-tab active" id="singlePlayerTabBtn" data-tab="single">
+            Single Player
+          </button>
+          <button class="leaderboard-tab" id="multiplayerTabBtn" data-tab="multi">
+            Multiplayer
+          </button>
+        </div>
+        <div id="leaderboardContainer">
+          <div class="leaderboard-loading">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary" id="refreshLeaderboardBtn" style="width: 100%; margin-top: 12px;">
+          Refresh
+        </button>
+      </div>
+
+      <!-- Instructions -->
+      <div class="card instructions">
+        <h3>How to Play</h3>
+        <ul>
+          <li><span class="key">W / S</span> Move paddle</li>
+          <li><span class="key">Space</span> Start game</li>
+          <li><span class="key">Esc</span> Pause (single-player only)</li>
+        </ul>
+        <p class="multiplayer-info">Multiplayer: First to <span id="winningScore"></span> wins!</p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>Powered by <a href="https://accelbyte.io" target="_blank">AccelByte Gaming Services</a></p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/multiplayer.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/multiplayer-game.js"></script>
+  <script>
+    // Main application controller
+    (function() {
+      'use strict';
+
+      // DOM Elements
+      const elements = {
+        startBtn: document.getElementById('startBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        debugScoreBtn: document.getElementById('debugScoreBtn'),
+        loginBtn: document.getElementById('loginBtn'),
+        statusIndicator: document.getElementById('statusIndicator'),
+        userName: document.getElementById('userName'),
+        userId: document.getElementById('userId'),
+        copyUserIdBtn: document.getElementById('copyUserIdBtn'),
+        leaderboardContainer: document.getElementById('leaderboardContainer'),
+        refreshLeaderboardBtn: document.getElementById('refreshLeaderboardBtn'),
+        singlePlayerTabBtn: document.getElementById('singlePlayerTabBtn'),
+        multiplayerTabBtn: document.getElementById('multiplayerTabBtn'),
+        toastContainer: document.getElementById('toastContainer'),
+        lobbyStatusContainer: document.getElementById('lobbyStatusContainer'),
+        lobbyStatusIndicator: document.getElementById('lobbyStatusIndicator'),
+        lobbyStatusText: document.getElementById('lobbyStatusText'),
+        // Mode selection
+        modeSelection: document.getElementById('modeSelection'),
+        singlePlayerBtn: document.getElementById('singlePlayerBtn'),
+        multiplayerBtn: document.getElementById('multiplayerBtn'),
+        // Controls
+        singlePlayerControls: document.getElementById('singlePlayerControls'),
+        multiplayerControls: document.getElementById('multiplayerControls'),
+        // Matchmaking
+        matchmakingPanel: document.getElementById('matchmakingPanel'),
+        findMatchBtn: document.getElementById('findMatchBtn'),
+        queuePanel: document.getElementById('queuePanel'),
+        queueTimer: document.getElementById('queueTimer'),
+        cancelMatchBtn: document.getElementById('cancelMatchBtn'),
+        matchFoundPanel: document.getElementById('matchFoundPanel'),
+        opponentInfo: document.getElementById('opponentInfo'),
+        multiplayerGameControls: document.getElementById('multiplayerGameControls'),
+        leaveMatchBtn: document.getElementById('leaveMatchBtn'),
+        leaveSessionBtn: document.getElementById('leaveSessionBtn'),
+        // P2P Overlay
+        p2pOverlay: document.getElementById('p2pOverlay'),
+        p2pStatusTitle: document.getElementById('p2pStatusTitle'),
+        p2pStatusMessage: document.getElementById('p2pStatusMessage'),
+        p2pSpinner: document.getElementById('p2pSpinner'),
+        p2pRetryBtn: document.getElementById('p2pRetryBtn'),
+        p2pCancelBtn: document.getElementById('p2pCancelBtn'),
+        p2pStepHost: document.getElementById('p2pStepHost'),
+        p2pStepIce: document.getElementById('p2pStepIce'),
+        p2pStepSdp: document.getElementById('p2pStepSdp'),
+        p2pStepConnect: document.getElementById('p2pStepConnect'),
+        p2pConnector1: document.getElementById('p2pConnector1'),
+        p2pConnector2: document.getElementById('p2pConnector2'),
+        p2pConnector3: document.getElementById('p2pConnector3'),
+        // Connection Quality
+        connectionQualityDisplay: document.getElementById('connectionQualityDisplay'),
+        connectionType: document.getElementById('connectionType'),
+        connectionTypeIcon: document.getElementById('connectionTypeIcon'),
+        connectionTypeLabel: document.getElementById('connectionTypeLabel'),
+        connectionLatency: document.getElementById('connectionLatency')
+      };
+
+      // Initialize games
+      const game = new PongGame('gameCanvas');
+      let multiplayerGame = null;
+      let isSubmittingScore = false;
+
+      // Game mode state
+      let currentMode = 'single'; // 'single' or 'multi'
+      let queueTimerInterval = null;
+      let queueStartTime = null;
+
+      // Leaderboard tab state
+      let currentLeaderboardTab = 'single'; // 'single' or 'multi'
+
+      // P2P state messages
+      const P2P_STATE_MESSAGES = {
+        HOST_CHECK: { title: 'Connecting to Peer', message: 'Checking host availability...' },
+        ICE_OFFER: { title: 'Connecting to Peer', message: 'Negotiating connection...' },
+        SDP_EXCHANGE: { title: 'Connecting to Peer', message: 'Exchanging session details...' },
+        GATHERING: { title: 'Connecting to Peer', message: 'Gathering network candidates...' },
+        ESTABLISHING: { title: 'Almost There', message: 'Establishing direct connection...' },
+        CONNECTED: { title: 'Connected!', message: 'Starting game...' },
+        FAILED: { title: 'Connection Failed', message: 'Could not establish peer connection.' }
+      };
+
+      // Toast notification system
+      function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        elements.toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.animation = 'slideIn 0.3s ease reverse';
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      }
+
+      // P2P Overlay Functions
+      function showP2POverlay() {
+        elements.p2pOverlay.classList.add('active');
+        elements.p2pOverlay.classList.remove('error');
+        elements.p2pSpinner.style.display = 'block';
+        elements.p2pRetryBtn.style.display = 'none';
+        resetP2PSteps();
+      }
+
+      function hideP2POverlay() {
+        elements.p2pOverlay.classList.remove('active', 'error');
+      }
+
+      function showP2PError(message) {
+        elements.p2pOverlay.classList.add('error');
+        elements.p2pSpinner.style.display = 'none';
+        elements.p2pRetryBtn.style.display = 'inline-flex';
+        elements.p2pStatusTitle.textContent = 'Connection Failed';
+        elements.p2pStatusMessage.textContent = message || 'Could not establish peer connection.';
+      }
+
+      function resetP2PSteps() {
+        [elements.p2pStepHost, elements.p2pStepIce, elements.p2pStepSdp, elements.p2pStepConnect].forEach(step => {
+          step.classList.remove('active', 'completed', 'error');
+        });
+        [elements.p2pConnector1, elements.p2pConnector2, elements.p2pConnector3].forEach(connector => {
+          connector.classList.remove('active');
+        });
+      }
+
+      function updateP2PStep(state) {
+        const stateMsg = P2P_STATE_MESSAGES[state];
+        if (stateMsg) {
+          elements.p2pStatusTitle.textContent = stateMsg.title;
+          elements.p2pStatusMessage.textContent = stateMsg.message;
+        }
+
+        // Update step indicators based on state
+        const steps = {
+          HOST_CHECK: [0],
+          ICE_OFFER: [0, 1],
+          SDP_EXCHANGE: [0, 1, 2],
+          GATHERING: [0, 1, 2],
+          ESTABLISHING: [0, 1, 2, 3],
+          CONNECTED: [0, 1, 2, 3],
+          FAILED: []
+        };
+
+        const stepElements = [elements.p2pStepHost, elements.p2pStepIce, elements.p2pStepSdp, elements.p2pStepConnect];
+        const connectorElements = [elements.p2pConnector1, elements.p2pConnector2, elements.p2pConnector3];
+        const completedSteps = steps[state] || [];
+
+        stepElements.forEach((step, i) => {
+          step.classList.remove('active', 'completed', 'error');
+          if (completedSteps.includes(i)) {
+            if (i === completedSteps[completedSteps.length - 1]) {
+              step.classList.add('active');
+            } else {
+              step.classList.add('completed');
+            }
+          }
+        });
+
+        connectorElements.forEach((connector, i) => {
+          connector.classList.toggle('active', completedSteps.includes(i + 1));
+        });
+
+        if (state === 'CONNECTED') {
+          stepElements.forEach(step => {
+            step.classList.remove('active');
+            step.classList.add('completed');
+          });
+        }
+
+        if (state === 'FAILED') {
+          stepElements.forEach(step => {
+            step.classList.add('error');
+          });
+          showP2PError();
+        }
+      }
+
+      // Connection Quality Display
+      function showConnectionQuality() {
+        elements.connectionQualityDisplay.style.display = 'flex';
+      }
+
+      function hideConnectionQuality() {
+        elements.connectionQualityDisplay.style.display = 'none';
+      }
+
+      function updateConnectionQuality(info) {
+        if (!info) return;
+
+        // Update connection type
+        let typeLabel = 'Direct';
+        let typeIcon = '&#128279;'; // link icon
+        elements.connectionType.className = 'connection-type';
+
+        switch (info.type) {
+          case 'host':
+            typeLabel = 'Direct';
+            typeIcon = '&#9889;'; // lightning
+            elements.connectionType.classList.add('direct');
+            break;
+          case 'srflx':
+            typeLabel = 'STUN';
+            typeIcon = '&#127760;'; // globe
+            break;
+          case 'relay':
+            typeLabel = 'Relay';
+            typeIcon = '&#128260;'; // relay
+            elements.connectionType.classList.add('relay');
+            break;
+          default:
+            typeLabel = 'Unknown';
+        }
+
+        elements.connectionTypeIcon.innerHTML = typeIcon;
+        elements.connectionTypeLabel.textContent = typeLabel;
+
+        // Update latency
+        const latency = info.latency || 0;
+        elements.connectionLatency.textContent = `${latency}ms`;
+        elements.connectionLatency.className = 'connection-latency';
+
+        if (latency < 50) {
+          elements.connectionLatency.classList.add('good');
+        } else if (latency < 100) {
+          elements.connectionLatency.classList.add('medium');
+        } else {
+          elements.connectionLatency.classList.add('poor');
+        }
+      }
+
+      // Initialize multiplayer game
+      function initMultiplayerGame(isHost) {
+        if (multiplayerGame) {
+          multiplayerGame.destroy();
+        }
+
+        multiplayerGame = new MultiplayerGame('gameCanvas');
+        multiplayerGame.setRole(isHost);
+
+        multiplayerGame.onScoreUpdate = (local, remote) => {
+          console.log(`[App] Multiplayer score: ${local} - ${remote}`);
+        };
+
+        multiplayerGame.onGameOver = async (result) => {
+          console.log('[App] Game over:', result);
+          hideConnectionQuality();
+
+          if (result.won) {
+            showToast('You won!', 'success');
+          } else if (result.reason === 'opponent_left') {
+            showToast('Opponent left - you win by forfeit!', 'success');
+          } else {
+            showToast('Game over - you lost', 'info');
+          }
+
+          // Submit match result to stats
+          try {
+            const opponentId = pongMultiplayer.opponentInfo?.id || pongMultiplayer.opponentInfo?.ID || '';
+            const won = result.won || result.reason === 'opponent_left';
+            await pongAPI.submitMultiplayerResult(
+              won,
+              opponentId,
+              result.localScore || 0,
+              result.remoteScore || 0,
+              0 // Match duration not tracked yet
+            );
+            console.log('[App] Multiplayer result submitted');
+          } catch (error) {
+            console.error('[App] Failed to submit multiplayer result:', error);
+          }
+        };
+
+        multiplayerGame.onConnectionInfoUpdate = (info) => {
+          updateConnectionQuality(info);
+        };
+
+        // Connect game state receiver
+        pongMultiplayer.onGameStateReceived = (state) => {
+          if (multiplayerGame) {
+            multiplayerGame.receiveGameState(state);
+          }
+        };
+
+        return multiplayerGame;
+      }
+
+      function startMultiplayerGame() {
+        if (multiplayerGame) {
+          multiplayerGame.start();
+          showConnectionQuality();
+          // Countdown and game_start signal are now handled internally by MultiplayerGame
+        }
+      }
+
+      function cleanupMultiplayerGame() {
+        if (multiplayerGame) {
+          multiplayerGame.destroy();
+          multiplayerGame = null;
+        }
+        hideConnectionQuality();
+        hideP2POverlay();
+      }
+
+      // Update UI based on login state
+      function updateUserUI() {
+        const userInfo = pongAPI.getUserInfo();
+
+        if (userInfo.isLoggedIn) {
+          elements.statusIndicator.classList.add('online');
+          elements.userName.textContent = userInfo.displayName || 'Player';
+          elements.userId.textContent = `ID: ${userInfo.userId}`;
+          elements.copyUserIdBtn.style.display = 'flex';
+          elements.loginBtn.textContent = 'Logged In';
+          elements.loginBtn.disabled = true;
+          elements.lobbyStatusContainer.style.display = 'block';
+        } else {
+          elements.statusIndicator.classList.remove('online');
+          elements.userName.textContent = 'Not logged in';
+          elements.userId.textContent = '';
+          elements.copyUserIdBtn.style.display = 'none';
+          elements.loginBtn.textContent = 'Login';
+          elements.loginBtn.disabled = false;
+          elements.lobbyStatusContainer.style.display = 'none';
+        }
+      }
+
+      // Update lobby status UI
+      function updateLobbyStatusUI(state) {
+        const stateConfig = {
+          'idle': { text: 'Disconnected', class: '' },
+          'connecting_lobby': { text: 'Connecting...', class: 'connecting' },
+          'lobby_connected': { text: 'Connected', class: 'connected' },
+          'queuing': { text: 'Finding Match...', class: 'connecting' },
+          'matched': { text: 'Match Found!', class: 'connected' },
+          'joining_session': { text: 'Joining Session...', class: 'connecting' },
+          'in_session': { text: 'In Session', class: 'connected' },
+          'connecting_p2p': { text: 'Connecting P2P...', class: 'connecting' },
+          'playing': { text: 'Playing', class: 'connected' },
+          'reconnecting': { text: 'Reconnecting...', class: 'connecting' },
+          'finished': { text: 'Finished', class: '' },
+          'error': { text: 'Error', class: 'error' }
+        };
+
+        const config = stateConfig[state] || { text: state, class: '' };
+        elements.lobbyStatusText.textContent = config.text;
+        elements.lobbyStatusIndicator.className = 'lobby-status-indicator ' + config.class;
+      }
+
+      // Connect to lobby WebSocket
+      async function connectToLobby() {
+        updateLobbyStatusUI('connecting_lobby');
+
+        try {
+          await pongMultiplayer.connectLobby();
+          showToast('Connected to lobby', 'success');
+        } catch (error) {
+          console.error('Failed to connect to lobby:', error);
+          showToast(`Lobby connection failed: ${error.message}`, 'error');
+          updateLobbyStatusUI('error');
+        }
+      }
+
+      // Mode switching
+      function switchMode(mode) {
+        if (currentMode === mode) return;
+
+        // Clean up existing multiplayer game when leaving multiplayer mode
+        if (currentMode === 'multi') {
+          cleanupMultiplayerGame();
+          // Leave session if in one
+          if (pongMultiplayer.isInSession()) {
+            pongMultiplayer.leaveSession().catch(e => console.error('Failed to leave session:', e));
+          }
+        }
+
+        currentMode = mode;
+
+        // Update mode button states
+        elements.singlePlayerBtn.classList.toggle('active', mode === 'single');
+        elements.multiplayerBtn.classList.toggle('active', mode === 'multi');
+
+        // Show/hide appropriate controls
+        elements.singlePlayerControls.style.display = mode === 'single' ? 'flex' : 'none';
+        elements.multiplayerControls.style.display = mode === 'multi' ? 'flex' : 'none';
+
+        // Handle AI game state based on mode
+        if (mode === 'multi') {
+          // Stop AI game loop when entering multiplayer
+          game.stop();
+          showMatchmakingPanel();
+        } else {
+          // Reset and reactivate AI game when entering single-player
+          game.reset();
+          game.activate();
+        }
+
+        console.log(`[App] Switched to ${mode} mode`);
+      }
+
+      // Matchmaking UI helpers
+      function showMatchmakingPanel() {
+        elements.matchmakingPanel.style.display = 'flex';
+        elements.queuePanel.style.display = 'none';
+        elements.matchFoundPanel.style.display = 'none';
+        elements.multiplayerGameControls.style.display = 'none';
+        elements.findMatchBtn.disabled = false;
+        stopQueueTimer();
+      }
+
+      function showQueuePanel() {
+        elements.matchmakingPanel.style.display = 'none';
+        elements.queuePanel.style.display = 'flex';
+        elements.matchFoundPanel.style.display = 'none';
+        elements.multiplayerGameControls.style.display = 'none';
+        startQueueTimer();
+      }
+
+      function showMatchFoundPanel(opponentName) {
+        elements.matchmakingPanel.style.display = 'none';
+        elements.queuePanel.style.display = 'none';
+        elements.matchFoundPanel.style.display = 'flex';
+        elements.multiplayerGameControls.style.display = 'none';
+        elements.opponentInfo.innerHTML = opponentName
+          ? `<span>Playing against <strong>${opponentName}</strong></span>`
+          : '<span>Connecting to opponent...</span>';
+        stopQueueTimer();
+      }
+
+      function showMultiplayerGameControls() {
+        elements.matchmakingPanel.style.display = 'none';
+        elements.queuePanel.style.display = 'none';
+        elements.matchFoundPanel.style.display = 'none';
+        elements.multiplayerGameControls.style.display = 'flex';
+        stopQueueTimer();
+      }
+
+      // Queue timer
+      function startQueueTimer() {
+        queueStartTime = Date.now();
+        elements.queueTimer.textContent = '0:00';
+
+        queueTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - queueStartTime) / 1000);
+          const minutes = Math.floor(elapsed / 60);
+          const seconds = elapsed % 60;
+          elements.queueTimer.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }, 1000);
+      }
+
+      function stopQueueTimer() {
+        if (queueTimerInterval) {
+          clearInterval(queueTimerInterval);
+          queueTimerInterval = null;
+        }
+        queueStartTime = null;
+      }
+
+      // Matchmaking handlers
+      async function handleFindMatch() {
+        if (!pongAPI.isLoggedIn()) {
+          showToast('Please log in first', 'error');
+          return;
+        }
+
+        elements.findMatchBtn.disabled = true;
+
+        try {
+          // Ensure lobby is connected
+          const mpState = pongMultiplayer.getState();
+          if (mpState !== 'lobby_connected' && mpState !== 'idle') {
+            if (mpState === 'error') {
+              await connectToLobby();
+            } else {
+              showToast('Please wait for lobby connection', 'info');
+              elements.findMatchBtn.disabled = false;
+              return;
+            }
+          }
+
+          if (pongMultiplayer.getState() === 'idle') {
+            await connectToLobby();
+          }
+
+          showQueuePanel();
+          await pongMultiplayer.startMatchmaking();
+          showToast('Searching for opponent...', 'info');
+
+        } catch (error) {
+          console.error('Failed to start matchmaking:', error);
+          showToast(`Matchmaking failed: ${error.message}`, 'error');
+          showMatchmakingPanel();
+        }
+      }
+
+      async function handleCancelMatch() {
+        try {
+          await pongMultiplayer.cancelMatchmaking();
+          showToast('Matchmaking cancelled', 'info');
+          showMatchmakingPanel();
+        } catch (error) {
+          console.error('Failed to cancel matchmaking:', error);
+          showMatchmakingPanel();
+        }
+      }
+
+      async function handleLeaveMatch() {
+        try {
+          hideP2POverlay();
+          cleanupMultiplayerGame();
+          await pongMultiplayer.leaveSession();
+          showToast('Left the match', 'info');
+          showMatchmakingPanel();
+          game.reset();
+        } catch (error) {
+          console.error('Failed to leave match:', error);
+          cleanupMultiplayerGame();
+          showMatchmakingPanel();
+        }
+      }
+
+      // Setup multiplayer state change handler
+      pongMultiplayer.onStateChange = function(newState, oldState) {
+        console.log(`[App] Multiplayer state: ${oldState} -> ${newState}`);
+        updateLobbyStatusUI(newState);
+
+        // Update matchmaking UI based on state
+        if (currentMode !== 'multi') return;
+
+        switch (newState) {
+          case 'idle':
+          case 'lobby_connected':
+            showMatchmakingPanel();
+            cleanupMultiplayerGame();
+            break;
+          case 'queuing':
+            showQueuePanel();
+            break;
+          case 'matched':
+          case 'joining_session':
+          case 'in_session':
+            showMatchFoundPanel(null);
+            break;
+          case 'connecting_p2p':
+            showMatchFoundPanel(null);
+            showP2POverlay();
+            break;
+          case 'playing':
+            hideP2POverlay();
+            showMultiplayerGameControls();
+            startMultiplayerGame();
+            break;
+          case 'finished':
+            cleanupMultiplayerGame();
+            showMatchmakingPanel();
+            break;
+          case 'error':
+            cleanupMultiplayerGame();
+            showMatchmakingPanel();
+            break;
+        }
+      };
+
+      // P2P state change handler
+      pongMultiplayer.onP2PStateChange = function(newState, oldState) {
+        console.log(`[App] P2P state: ${oldState} -> ${newState}`);
+        updateP2PStep(newState);
+      };
+
+      pongMultiplayer.onMatchFound = function(data) {
+        console.log('[App] Match found:', data);
+        showToast('Match found!', 'success');
+      };
+
+      pongMultiplayer.onSessionJoined = function(data) {
+        console.log('[App] Session joined:', data);
+        const opponentName = getOpponentDisplayName(data.opponent);
+        showMatchFoundPanel(opponentName);
+
+        // Initialize multiplayer game with role
+        initMultiplayerGame(data.isHost);
+
+        if (data.opponent) {
+          showToast(`Connected to ${opponentName}`, 'success');
+        } else {
+          showToast('Waiting for opponent...', 'info');
+        }
+      };
+
+      pongMultiplayer.onOpponentJoined = function(opponentInfo) {
+        console.log('[App] Opponent joined:', opponentInfo);
+        const opponentName = getOpponentDisplayName(opponentInfo);
+        showMatchFoundPanel(opponentName);
+        showToast(`${opponentName} joined!`, 'success');
+      };
+
+      pongMultiplayer.onOpponentLeft = function(data) {
+        console.log('[App] Opponent left:', data);
+        const reason = data.reason || 'left';
+
+        let message;
+        switch (reason) {
+          case 'kicked':
+            message = 'Opponent was removed from the match';
+            break;
+          case 'connection_failed':
+            message = 'Lost connection to opponent';
+            break;
+          default:
+            message = 'Opponent left the match';
+        }
+
+        showToast(message, 'warning');
+
+        // Reset to matchmaking if game was in progress
+        if (currentMode === 'multi') {
+          cleanupMultiplayerGame();
+          game.reset();
+          showMatchmakingPanel();
+        }
+      };
+
+      pongMultiplayer.onKicked = function(data) {
+        console.log('[App] Kicked from session:', data);
+        showToast('You were removed from the match', 'error');
+
+        if (currentMode === 'multi') {
+          cleanupMultiplayerGame();
+          game.reset();
+          showMatchmakingPanel();
+        }
+      };
+
+      pongMultiplayer.onP2PConnected = function() {
+        console.log('[App] P2P connected');
+        hideP2POverlay();
+        showMultiplayerGameControls();
+        showToast('Game starting!', 'success');
+        // Game is started via state change handler
+      };
+
+      // Connection quality updates
+      pongMultiplayer.onConnectionInfoUpdate = function(info) {
+        updateConnectionQuality(info);
+      };
+
+      pongMultiplayer.onP2PDisconnected = function(data) {
+        console.log('[App] P2P disconnected:', data);
+
+        if (data?.recoverable) {
+          showToast('Connection unstable...', 'warning');
+        } else {
+          showToast('Connection lost', 'error');
+          cleanupMultiplayerGame();
+          showMatchmakingPanel();
+        }
+      };
+
+      pongMultiplayer.onError = function(message) {
+        showToast(message, 'error');
+        if (currentMode === 'multi') {
+          hideP2POverlay();
+          cleanupMultiplayerGame();
+          showMatchmakingPanel();
+        }
+      };
+
+      // Helper to get display name for opponent
+      function getOpponentDisplayName(opponent) {
+        if (!opponent) return 'Opponent';
+        if (opponent.displayName) return opponent.displayName;
+        if (opponent.id) return `Player_${opponent.id.substring(0, 6)}`;
+        return 'Opponent';
+      }
+
+      // Render leaderboard
+      function renderLeaderboard(data, isMultiplayer = false) {
+        if (!data || !data.entries || data.entries.length === 0) {
+          const emptyMessage = isMultiplayer
+            ? 'No multiplayer wins yet. Play a match!'
+            : 'No scores yet. Be the first!';
+          elements.leaderboardContainer.innerHTML = `
+            <div class="leaderboard-empty">
+              <p>${emptyMessage}</p>
+            </div>
+          `;
+          return;
+        }
+
+        const userInfo = pongAPI.getUserInfo();
+        const scoreLabel = isMultiplayer ? 'Wins' : 'Score';
+        const html = `
+          <ul class="leaderboard-list">
+            ${data.entries.map((entry, index) => {
+              const isCurrentUser = userInfo.userId === entry.userId;
+              const rankClass = index < 3 ? `top-${index + 1}` : '';
+              return `
+                <li class="leaderboard-item ${isCurrentUser ? 'current-user' : ''}">
+                  <span class="rank ${rankClass}">${entry.rank || index + 1}</span>
+                  <div class="player-info">
+                    <div class="player-name">${entry.displayName || `Player_${entry.userId?.substring(0, 6) || 'Unknown'}`}</div>
+                  </div>
+                  <span class="player-score" title="${scoreLabel}">${entry.score}</span>
+                </li>
+              `;
+            }).join('')}
+          </ul>
+        `;
+        elements.leaderboardContainer.innerHTML = html;
+      }
+
+      // Fetch and display leaderboard
+      async function loadLeaderboard(tab = currentLeaderboardTab) {
+        elements.leaderboardContainer.innerHTML = `
+          <div class="leaderboard-loading">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+          </div>
+        `;
+
+        try {
+          const isMultiplayer = tab === 'multi';
+          const data = isMultiplayer
+            ? await pongAPI.getMultiplayerLeaderboard()
+            : await pongAPI.getLeaderboard();
+          renderLeaderboard(data, isMultiplayer);
+        } catch (error) {
+          console.error('Failed to load leaderboard:', error);
+          elements.leaderboardContainer.innerHTML = `
+            <div class="leaderboard-error">
+              <p>Failed to load leaderboard</p>
+            </div>
+          `;
+        }
+      }
+
+      // Switch leaderboard tab
+      function switchLeaderboardTab(tab) {
+        if (currentLeaderboardTab === tab) return;
+        currentLeaderboardTab = tab;
+
+        // Update tab button states
+        elements.singlePlayerTabBtn.classList.toggle('active', tab === 'single');
+        elements.multiplayerTabBtn.classList.toggle('active', tab === 'multi');
+
+        // Load the appropriate leaderboard
+        loadLeaderboard(tab);
+      }
+
+      // Handle login
+      async function handleLogin() {
+        elements.loginBtn.disabled = true;
+        elements.loginBtn.textContent = 'Logging in...';
+
+        try {
+          await pongAPI.headlessLogin();
+          updateUserUI();
+          showToast('Logged in successfully!', 'success');
+          loadLeaderboard(); // Refresh to highlight user
+
+          // Connect to lobby WebSocket after successful login
+          connectToLobby();
+        } catch (error) {
+          console.error('Login failed:', error);
+          showToast(`Login failed: ${error.message}`, 'error');
+          elements.loginBtn.disabled = false;
+          elements.loginBtn.textContent = 'Login';
+        }
+      }
+
+      // Increment score on backend (called each time player scores)
+      async function incrementScore() {
+        if (isSubmittingScore) return;
+        if (!pongAPI.isLoggedIn()) {
+          return; // Silently skip if not logged in
+        }
+
+        isSubmittingScore = true;
+
+        try {
+          await pongAPI.submitScore(1, {
+            difficulty: CONFIG.AI_DIFFICULTY.toString()
+          });
+          // Refresh leaderboard periodically (not on every point to avoid spam)
+          if (game.getScores().player % 5 === 0) {
+            loadLeaderboard();
+          }
+        } catch (error) {
+          console.error('Failed to increment score:', error);
+        } finally {
+          isSubmittingScore = false;
+        }
+      }
+
+      // Update button states
+      function updateButtons() {
+        const state = game.getState();
+
+        switch (state) {
+          case 'waiting':
+            elements.startBtn.textContent = 'Start Game';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.disabled = true;
+            break;
+          case 'playing':
+            elements.startBtn.textContent = 'Restart';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.textContent = 'Pause';
+            elements.pauseBtn.disabled = false;
+            break;
+          case 'paused':
+            elements.startBtn.textContent = 'Restart';
+            elements.startBtn.disabled = false;
+            elements.pauseBtn.textContent = 'Resume';
+            elements.pauseBtn.disabled = false;
+            break;
+        }
+      }
+
+      // Game event handlers
+      game.onPlayerScore = function() {
+        incrementScore();
+      };
+
+      // Button event listeners
+      elements.startBtn.addEventListener('click', () => {
+        game.reset();
+        game.start();
+        updateButtons();
+      });
+
+      elements.pauseBtn.addEventListener('click', () => {
+        const state = game.getState();
+        if (state === 'playing') {
+          game.pause();
+        } else if (state === 'paused') {
+          game.resume();
+        }
+        updateButtons();
+      });
+
+      elements.debugScoreBtn.addEventListener('click', async () => {
+        if (!pongAPI.isLoggedIn()) {
+          showToast('Login first to test scoring', 'error');
+          return;
+        }
+        elements.debugScoreBtn.disabled = true;
+        elements.debugScoreBtn.textContent = 'Sending...';
+        try {
+          await pongAPI.submitScore(1, { difficulty: CONFIG.AI_DIFFICULTY.toString() });
+          showToast('Score incremented by 1!', 'success');
+          loadLeaderboard();
+        } catch (error) {
+          showToast(`Failed: ${error.message}`, 'error');
+        } finally {
+          elements.debugScoreBtn.disabled = false;
+          elements.debugScoreBtn.textContent = '+1 Score (Debug)';
+        }
+      });
+
+      elements.loginBtn.addEventListener('click', handleLogin);
+
+      elements.copyUserIdBtn.addEventListener('click', () => {
+        const userInfo = pongAPI.getUserInfo();
+        if (userInfo.userId) {
+          navigator.clipboard.writeText(userInfo.userId).then(() => {
+            showToast('User ID copied to clipboard', 'success');
+          }).catch(() => {
+            showToast('Failed to copy User ID', 'error');
+          });
+        }
+      });
+
+      elements.refreshLeaderboardBtn.addEventListener('click', () => {
+        pongAPI.clearLeaderboardCache();
+        loadLeaderboard();
+      });
+
+      // Leaderboard tab event listeners
+      elements.singlePlayerTabBtn.addEventListener('click', () => switchLeaderboardTab('single'));
+      elements.multiplayerTabBtn.addEventListener('click', () => switchLeaderboardTab('multi'));
+
+      // Mode selection event listeners
+      elements.singlePlayerBtn.addEventListener('click', () => switchMode('single'));
+      elements.multiplayerBtn.addEventListener('click', () => switchMode('multi'));
+
+      // Matchmaking event listeners
+      elements.findMatchBtn.addEventListener('click', handleFindMatch);
+      elements.cancelMatchBtn.addEventListener('click', handleCancelMatch);
+      elements.leaveMatchBtn.addEventListener('click', handleLeaveMatch);
+      elements.leaveSessionBtn.addEventListener('click', handleLeaveMatch);
+
+      // P2P overlay event listeners
+      elements.p2pCancelBtn.addEventListener('click', async () => {
+        hideP2POverlay();
+        cleanupMultiplayerGame();
+        await pongMultiplayer.leaveSession();
+        showMatchmakingPanel();
+      });
+
+      elements.p2pRetryBtn.addEventListener('click', async () => {
+        // Reset overlay state and retry
+        showP2POverlay();
+        resetP2PSteps();
+        try {
+          // Re-initiate P2P connection
+          await pongMultiplayer._initiateP2PConnection();
+        } catch (error) {
+          showP2PError(error.message);
+        }
+      });
+
+      // Keyboard shortcut to update buttons
+      document.addEventListener('keydown', () => {
+        setTimeout(updateButtons, 10);
+      });
+
+      // Canvas click to start (single-player only)
+      document.getElementById('gameCanvas').addEventListener('click', () => {
+        if (currentMode === 'single' && game.getState() === 'waiting') {
+          game.start();
+          updateButtons();
+        }
+      });
+
+      // Initialize
+      function init() {
+        // Update winning score from config
+        document.getElementById('winningScore').textContent = CONFIG.WINNING_SCORE;
+
+        updateUserUI();
+        updateButtons();
+
+        // Auto-login if not already logged in
+        if (!pongAPI.isLoggedIn() && CONFIG.CLIENT_ID) {
+          // handleLogin will call loadLeaderboard after successful login
+          handleLogin();
+        } else {
+          // Already logged in (session restored) - load leaderboard and connect to lobby
+          loadLeaderboard();
+          if (pongAPI.isLoggedIn()) {
+            connectToLobby();
+          }
+        }
+      }
+
+      // Start initialization when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
